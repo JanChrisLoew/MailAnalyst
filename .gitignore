@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.mailanalyst_cache/
+*.pyc
+
+input_emails/*
+!input_emails/.gitkeep
+
+out/*
+!out/.gitkeep
