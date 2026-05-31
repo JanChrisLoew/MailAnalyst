@@ -48,6 +48,12 @@ Danach die `.eml`-Dateien in den Ordner `input_emails` kopieren und ausfuehren:
 .\.venv\Scripts\python.exe mail_analyst.py --input input_emails --output out\emails.parquet --list-output out\emails_microsoft_list.csv
 ```
 
+Dabei wird zusaetzlich eine Logdatei erzeugt:
+
+```text
+out\parse_log.txt
+```
+
 ## Input-Pfad
 
 Der Ordner mit den `.eml`-Dateien wird ueber `--input` definiert. Das Skript kann einen Ordner rekursiv durchsuchen oder eine einzelne `.eml`-Datei lesen.
@@ -98,6 +104,22 @@ Unterstuetzte Ausgabeformate:
 - `.parquet`: empfohlenes Masterformat
 - `.csv`: Austauschformat, gut fuer Microsoft Lists
 - `.xlsx`: Sichtdatei fuer Excel, lange Zellinhalte werden technisch bedingt gekuerzt
+
+## Logdatei
+
+Standardmaessig schreibt das Skript eine Logdatei neben den Masterexport:
+
+```text
+out\parse_log.txt
+```
+
+Die Logdatei enthaelt Startzeit, Input-/Output-Pfade, Cache-Pfad, Optionen, verarbeitete Dateien, Erfolgs-/Fehleranzahl und bei Fehlern die betroffene Datei mit Fehlermeldung.
+
+Ein anderer Logpfad kann explizit angegeben werden:
+
+```powershell
+python mail_analyst.py --input input_emails --output out\emails.parquet --list-output out\emails_microsoft_list.csv --log-output out\mein_parse_log.txt
+```
 
 ## Cache
 

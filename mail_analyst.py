@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import html
+import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,6 +25,7 @@ from bs4 import BeautifulSoup
 SUPPORTED_EXTENSIONS = {".eml"}
 DEFAULT_CACHE = Path(".mailanalyst_cache") / "mail_metadata.pkl"
 CACHE_SCHEMA_VERSION = 4
+LOGGER = logging.getLogger("mail_analyst")
 
 
 # Minimaler Fallback, falls BeautifulSoup bei sehr kaputtem HTML keinen Text liefert.
@@ -480,7 +482,7 @@ def cached_row_matches(cached_row: pd.Series, signature: FileSignature, hash_che
 
 def parse_indexed_mail(index: int, total: int, path: Path, signature: FileSignature, timezone_name: str) -> tuple[int, dict[str, object]]:
     """Hilfsfunktion fuer paralleles Parsen mit stabiler Ergebnisreihenfolge."""
-    print(f"[{index + 1}/{total}] Parse {path}")
+    LOGGER.info("[%s/%s] Parse %s", index + 1, total, path)
     return index, parse_mail_file(path, signature, timezone_name)
 
 
@@ -554,6 +556,27 @@ def write_output(dataframe: pd.DataFrame, output_path: Path) -> None:
         raise ValueError("Bitte .csv, .xlsx oder .parquet als Ausgabeendung verwenden.")
 
 
+def default_log_path(output_path: Path) -> Path:
+    """Legt die Standard-Logdatei neben den Masterexport."""
+    return output_path.parent / "parse_log.txt"
+
+
+def configure_logging(log_path: Path) -> None:
+    """Schreibt Logs parallel in Konsole und Logdatei."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.handlers.clear()
+
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+    LOGGER.addHandler(file_handler)
+    LOGGER.addHandler(console_handler)
+
+
 def list_export_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
     """Reduziert den Masterdatensatz auf eine menschenlesbare Review-/Listenansicht."""
     columns = [
@@ -619,6 +642,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", "-i", type=Path, default=Path("."), help="Datei oder Ordner mit .eml Dateien.")
     parser.add_argument("--output", "-o", type=Path, default=Path("out") / "mail_metadata.xlsx", help="Zieldatei: .xlsx, .csv oder .parquet.")
     parser.add_argument("--list-output", type=Path, help="Optionale reduzierte Review-/Microsoft-Lists-Datei: .xlsx oder .csv.")
+    parser.add_argument("--log-output", type=Path, help="Optionale Logdatei. Standard: parse_log.txt neben dem Masterexport.")
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="Pfad zur DataFrame-Cachedatei.")
     parser.add_argument("--refresh", action="store_true", help="Cache ignorieren und alle Dateien neu parsen.")
     parser.add_argument("--hash-check", action="store_true", help="Auch unveraenderte Dateien per SHA-256 gegen den Cache pruefen. Sicherer, aber langsamer.")
@@ -630,6 +654,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Orchestriert Parsing, Cache, Masterexport und optionalen List-Export."""
     args = parse_args()
+    log_path = args.log_output or default_log_path(args.output)
+    configure_logging(log_path)
+
+    started_at = datetime.now(timezone.utc)
+    LOGGER.info("Start MailAnalyst")
+    LOGGER.info("Input: %s", args.input.resolve())
+    LOGGER.info("Output: %s", args.output.resolve())
+    if args.list_output:
+        LOGGER.info("List-Output: %s", args.list_output.resolve())
+    LOGGER.info("Cache: %s", args.cache.resolve())
+    LOGGER.info("Timezone: %s", args.timezone)
+    LOGGER.info("Refresh: %s", args.refresh)
+    LOGGER.info("Hash-Check: %s", args.hash_check)
+    LOGGER.info("Workers: %s", args.workers)
+
     dataframe = build_dataframe(args.input, args.cache, args.refresh, args.hash_check, args.workers, args.timezone)
     write_output(dataframe, args.output)
     if args.list_output:
@@ -637,11 +676,17 @@ def main() -> None:
 
     ok_count = int((dataframe["parse_status"] == "ok").sum()) if "parse_status" in dataframe else 0
     error_count = int((dataframe["parse_status"] == "error").sum()) if "parse_status" in dataframe else 0
-    print(f"Fertig: {len(dataframe)} Dateien, {ok_count} erfolgreich, {error_count} Fehler.")
-    print(f"Cache: {args.cache.resolve()}")
-    print(f"Export: {args.output.resolve()}")
+    elapsed_seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
+    LOGGER.info("Fertig: %s Dateien, %s erfolgreich, %s Fehler.", len(dataframe), ok_count, error_count)
+    if error_count and {"source_path", "parse_error"}.issubset(dataframe.columns):
+        for _, row in dataframe[dataframe["parse_status"] == "error"].iterrows():
+            LOGGER.error("Parse-Fehler: %s | %s", row.get("source_path", ""), row.get("parse_error", ""))
+    LOGGER.info("Laufzeit Sekunden: %.2f", elapsed_seconds)
+    LOGGER.info("Cache: %s", args.cache.resolve())
+    LOGGER.info("Export: %s", args.output.resolve())
     if args.list_output:
-        print(f"List-Export: {args.list_output.resolve()}")
+        LOGGER.info("List-Export: %s", args.list_output.resolve())
+    LOGGER.info("Log: %s", log_path.resolve())
 
 
 if __name__ == "__main__":
