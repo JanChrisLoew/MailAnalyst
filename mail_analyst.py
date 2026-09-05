@@ -6,6 +6,7 @@ import html
 import logging
 import os
 import re
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,16 +16,17 @@ from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 from bs4 import BeautifulSoup
 
 
-SUPPORTED_EXTENSIONS = {".eml"}
+SUPPORTED_EXTENSIONS = {".eml", ".msg", ".pst"}
 DEFAULT_CACHE = Path(".mailanalyst_cache") / "mail_metadata.pkl"
-CACHE_SCHEMA_VERSION = 4
+CACHE_SCHEMA_VERSION = 6
 LOGGER = logging.getLogger("mail_analyst")
 
 
@@ -181,6 +183,38 @@ def html_to_text(value: str | None) -> str:
 
     text = soup.get_text("\n")
     return clean_plain_text(text) or legacy_html_to_text(value)
+
+
+def prepare_analysis_text(value: str | None, link_mode: str = "full") -> str:
+    """Reduziert URL-Rauschen fuer Markdown, ohne die Masterdaten zu veraendern."""
+    text = value or ""
+    if link_mode == "full":
+        return text
+
+    url_pattern = re.compile(r"https?://[^\s\]\)>]+", re.IGNORECASE)
+    media_extensions = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico")
+    tracking_keys = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid", "mc_cid", "mc_eid"}
+
+    def replace(match: re.Match[str]) -> str:
+        url = match.group(0)
+        if link_mode == "text_only":
+            return ""
+        try:
+            parts = urlsplit(url)
+            path_lower = parts.path.lower()
+            if path_lower.endswith(media_extensions):
+                return ""
+            query = [(key, val) for key, val in parse_qsl(parts.query, keep_blank_values=True)
+                     if key.lower() not in tracking_keys and not key.lower().startswith("utm_")]
+            compact = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), ""))
+            return compact.rstrip("?")
+        except ValueError:
+            return ""
+
+    text = url_pattern.sub(replace, text)
+    text = re.sub(r"\[\s*\]", "", text)
+    text = re.sub(r"\(\s*\)", "", text)
+    return normalize_text(text)
 
 
 def decode_part_payload(part: Message) -> str:
@@ -400,20 +434,312 @@ def parse_eml(path: Path, timezone_name: str) -> dict[str, object]:
     }
 
 
-def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str) -> dict[str, object]:
-    """Kapselt Fehler pro Datei, damit ein defektes EML den Lauf nicht abbricht."""
+def parse_msg(path: Path, timezone_name: str) -> dict[str, object]:
+    """Parst eine Outlook-MSG-Datei mit extract-msg."""
+    try:
+        import extract_msg
+    except ImportError as exc:
+        raise RuntimeError("MSG-Unterstuetzung fehlt. Bitte 'pip install -r requirements.txt' ausfuehren.") from exc
+
+    message = extract_msg.openMsg(str(path))
+    try:
+        sender = str(getattr(message, "sender", "") or "")
+        from_name, from_email = first_address(sender)
+        raw_date = str(getattr(message, "date", "") or "")
+        sent_at, sent_at_utc = parse_datetime(raw_date)
+        body_text_raw = str(getattr(message, "body", "") or "")
+        raw_html = getattr(message, "htmlBody", "") or ""
+        body_html = raw_html.decode("utf-8", errors="replace") if isinstance(raw_html, bytes) else str(raw_html)
+        body_text_clean = clean_plain_text(body_text_raw) or html_to_text(body_html)
+        attachments = [str(getattr(item, "longFilename", None) or getattr(item, "shortFilename", None) or "")
+                       for item in (getattr(message, "attachments", []) or [])]
+        header = getattr(message, "headerDict", {}) or {}
+        return {
+            "message_id": str(header.get("Message-ID", header.get("Message-Id", "")) or ""),
+            "in_reply_to": str(header.get("In-Reply-To", "") or ""),
+            "references": str(header.get("References", "") or ""),
+            "subject": str(getattr(message, "subject", "") or ""),
+            "sent_at": sent_at or raw_date,
+            "sent_at_utc": sent_at_utc,
+            **derive_date_fields(sent_at_utc, timezone_name),
+            "from_name": from_name,
+            "from_email": from_email,
+            "to": str(getattr(message, "to", "") or ""),
+            "to_emails": format_address_emails([str(getattr(message, "to", "") or "")]),
+            "cc": str(getattr(message, "cc", "") or ""),
+            "cc_emails": format_address_emails([str(getattr(message, "cc", "") or "")]),
+            "bcc": str(getattr(message, "bcc", "") or ""),
+            "bcc_emails": format_address_emails([str(getattr(message, "bcc", "") or "")]),
+            "reply_to": "",
+            "reply_to_emails": "",
+            "body_text": body_text_clean,
+            "body_text_raw": body_text_raw,
+            "body_text_clean": body_text_clean,
+            "body_text_length": len(body_text_clean),
+            "body_text_raw_length": len(body_text_raw),
+            "body_preview": body_text_clean[:500],
+            "body_html": body_html,
+            "body_html_length": len(body_html),
+            "has_attachments": bool(attachments),
+            "attachment_count": len(attachments),
+            "attachment_names": "; ".join(name for name in attachments if name),
+            "mime_defects": "",
+            "parse_status": "ok",
+            "parse_error": "",
+        }
+    finally:
+        message.close()
+
+
+def outlook_mail_row(item: object, pst_path: Path, folder_path: str, timezone_name: str) -> dict[str, object]:
+    """Uebertraegt ein Outlook-MailItem aus einer PST in das gemeinsame Schema."""
+    def value(name: str, default: object = "") -> object:
+        try:
+            return getattr(item, name)
+        except Exception:
+            return default
+
+    sent_value = value("SentOn", "")
+    if isinstance(sent_value, datetime):
+        if sent_value.tzinfo is None:
+            sent_value = sent_value.replace(tzinfo=ZoneInfo(timezone_name))
+        sent_at = sent_value.isoformat()
+        sent_at_utc = sent_value.astimezone(timezone.utc).isoformat()
+    else:
+        sent_at, sent_at_utc = parse_datetime(str(sent_value or ""))
+    sender_name = str(value("SenderName", "") or "")
+    sender_email = str(value("SenderEmailAddress", "") or "")
+    body_raw = str(value("Body", "") or "")
+    body_html = str(value("HTMLBody", "") or "")
+    body_clean = clean_plain_text(body_raw) or html_to_text(body_html)
+    attachment_names: list[str] = []
+    try:
+        attachments = item.Attachments
+        attachment_names = [str(attachments.Item(index).FileName or "") for index in range(1, attachments.Count + 1)]
+    except Exception:
+        pass
+    entry_id = str(value("EntryID", "") or "")
+    return {
+        "source_path": f"{pst_path.resolve()}::{folder_path}::{entry_id}",
+        "source_file_path": str(pst_path.resolve()),
+        "archive_path": str(pst_path.resolve()),
+        "outlook_folder": folder_path,
+        "outlook_entry_id": entry_id,
+        "message_id": str(value("InternetMessageID", "") or ""),
+        "in_reply_to": "",
+        "references": "",
+        "subject": str(value("Subject", "") or ""),
+        "sent_at": sent_at,
+        "sent_at_utc": sent_at_utc,
+        **derive_date_fields(sent_at_utc, timezone_name),
+        "from_name": sender_name,
+        "from_email": sender_email,
+        "to": str(value("To", "") or ""),
+        "to_emails": format_address_emails([str(value("To", "") or "")]),
+        "cc": str(value("CC", "") or ""),
+        "cc_emails": format_address_emails([str(value("CC", "") or "")]),
+        "bcc": str(value("BCC", "") or ""),
+        "bcc_emails": format_address_emails([str(value("BCC", "") or "")]),
+        "reply_to": "",
+        "reply_to_emails": "",
+        "body_text": body_clean,
+        "body_text_raw": body_raw,
+        "body_text_clean": body_clean,
+        "body_text_length": len(body_clean),
+        "body_text_raw_length": len(body_raw),
+        "body_preview": body_clean[:500],
+        "body_html": body_html,
+        "body_html_length": len(body_html),
+        "has_attachments": bool(attachment_names),
+        "attachment_count": len(attachment_names),
+        "attachment_names": "; ".join(attachment_names),
+        "mime_defects": "",
+        "parse_status": "ok",
+        "parse_error": "",
+    }
+
+
+def parse_pst_outlook(path: Path, signature: FileSignature, timezone_name: str) -> list[dict[str, object]]:
+    """Liest MailItems einer PST ueber klassisches Outlook unter Windows."""
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError as exc:
+        raise RuntimeError("PST-Unterstuetzung fehlt. Bitte pywin32 installieren.") from exc
+
+    pythoncom.CoInitialize()
+    outlook = win32com.client.Dispatch("Outlook.Application")
+    namespace = outlook.GetNamespace("MAPI")
+    before = {str(store.FilePath).lower() for store in namespace.Stores if getattr(store, "FilePath", "")}
+    namespace.AddStoreEx(str(path.resolve()), 3)
+    store = next((candidate for candidate in namespace.Stores
+                  if str(getattr(candidate, "FilePath", "")).lower() == str(path.resolve()).lower()), None)
+    if store is None:
+        raise RuntimeError(f"Outlook konnte die PST nicht oeffnen: {path}")
+    root = store.GetRootFolder()
+    rows: list[dict[str, object]] = []
+
+    def walk(folder: object, parent: str = "") -> None:
+        folder_path = f"{parent}\\{folder.Name}" if parent else str(folder.Name)
+        for index in range(1, folder.Items.Count + 1):
+            item = folder.Items.Item(index)
+            if int(getattr(item, "Class", 0)) == 43:  # olMail
+                try:
+                    rows.append(outlook_mail_row(item, path, folder_path, timezone_name))
+                except Exception as exc:
+                    entry_id = str(getattr(item, "EntryID", "") or "")
+                    rows.append({
+                        "source_path": f"{path.resolve()}::{folder_path}::{entry_id}",
+                        "source_file_path": str(path.resolve()),
+                        "archive_path": str(path.resolve()),
+                        "outlook_folder": folder_path,
+                        "outlook_entry_id": entry_id,
+                        "subject": str(getattr(item, "Subject", "") or ""),
+                        "parse_status": "error",
+                        "parse_error": str(exc),
+                    })
+        for index in range(1, folder.Folders.Count + 1):
+            walk(folder.Folders.Item(index), folder_path)
+
+    try:
+        walk(root)
+    finally:
+        if str(path.resolve()).lower() not in before:
+            namespace.RemoveStore(root)
+        pythoncom.CoUninitialize()
     base = signature.__dict__.copy()
+    base["cache_schema_version"] = CACHE_SCHEMA_VERSION
+    if not base["file_sha256"]:
+        base["file_sha256"] = sha256_file(path)
+    for row in rows:
+        row.update({key: value for key, value in base.items() if key != "source_path"})
+    return rows
+
+
+def parse_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -> list[dict[str, object]]:
+    """Liest eine PST direkt mit pypff, ohne Outlook zu starten."""
+    try:
+        import pypff
+    except ImportError as exc:
+        raise RuntimeError("libpff/pypff ist nicht installiert. Bitte Backend 'Outlook' waehlen oder pypff installieren.") from exc
+
+    def attr(item: object, *names: str, default: object = "") -> object:
+        for name in names:
+            try:
+                value = getattr(item, name)
+                return value() if callable(value) else value
+            except Exception:
+                continue
+        return default
+
+    def text_value(value: object) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value or "")
+
+    rows: list[dict[str, object]] = []
+    pst_file = pypff.open(str(path.resolve()))
+
+    def walk(folder: object, parent: str = "") -> None:
+        folder_name = text_value(attr(folder, "name", "display_name", "get_name", default="Ordner"))
+        folder_path = f"{parent}\\{folder_name}" if parent else folder_name
+        messages = attr(folder, "sub_messages", default=[])
+        for index, message in enumerate(messages or []):
+            identifier = text_value(attr(message, "identifier", "get_identifier", default=index))
+            try:
+                sent_value = attr(message, "client_submit_time", "delivery_time", default="")
+                if isinstance(sent_value, datetime):
+                    if sent_value.tzinfo is None:
+                        sent_value = sent_value.replace(tzinfo=timezone.utc)
+                    sent_at, sent_at_utc = sent_value.isoformat(), sent_value.astimezone(timezone.utc).isoformat()
+                else:
+                    sent_at, sent_at_utc = parse_datetime(text_value(sent_value))
+                body_raw = text_value(attr(message, "plain_text_body", "get_plain_text_body"))
+                body_html = text_value(attr(message, "html_body", "get_html_body"))
+                body_clean = clean_plain_text(body_raw) or html_to_text(body_html)
+                attachments = attr(message, "attachments", default=[]) or []
+                attachment_names = [text_value(attr(item, "name", "long_filename", "short_filename", default=""))
+                                    for item in attachments]
+                rows.append({
+                    "source_path": f"{path.resolve()}::{folder_path}::{identifier}",
+                    "source_file_path": str(path.resolve()), "archive_path": str(path.resolve()),
+                    "outlook_folder": folder_path, "outlook_entry_id": identifier,
+                    "pst_backend": "libpff", "message_id": text_value(attr(message, "internet_message_identifier")),
+                    "in_reply_to": "", "references": "", "subject": text_value(attr(message, "subject")),
+                    "sent_at": sent_at, "sent_at_utc": sent_at_utc, **derive_date_fields(sent_at_utc, timezone_name),
+                    "from_name": text_value(attr(message, "sender_name")),
+                    "from_email": text_value(attr(message, "sender_email_address")),
+                    "to": text_value(attr(message, "display_to")), "to_emails": text_value(attr(message, "display_to")),
+                    "cc": text_value(attr(message, "display_cc")), "cc_emails": text_value(attr(message, "display_cc")),
+                    "bcc": text_value(attr(message, "display_bcc")), "bcc_emails": text_value(attr(message, "display_bcc")),
+                    "reply_to": "", "reply_to_emails": "", "body_text": body_clean,
+                    "body_text_raw": body_raw, "body_text_clean": body_clean,
+                    "body_text_length": len(body_clean), "body_text_raw_length": len(body_raw),
+                    "body_preview": body_clean[:500], "body_html": body_html, "body_html_length": len(body_html),
+                    "has_attachments": bool(attachment_names), "attachment_count": len(attachment_names),
+                    "attachment_names": "; ".join(name for name in attachment_names if name),
+                    "mime_defects": "", "parse_status": "ok", "parse_error": "",
+                })
+            except Exception as exc:
+                rows.append({"source_path": f"{path.resolve()}::{folder_path}::{identifier}",
+                             "source_file_path": str(path.resolve()), "archive_path": str(path.resolve()),
+                             "outlook_folder": folder_path, "outlook_entry_id": identifier, "pst_backend": "libpff",
+                             "parse_status": "error", "parse_error": str(exc)})
+        for child in (attr(folder, "sub_folders", default=[]) or []):
+            walk(child, folder_path)
+
+    try:
+        walk(pst_file.get_root_folder())
+    finally:
+        pst_file.close()
+    base = signature.__dict__.copy()
+    base["cache_schema_version"] = CACHE_SCHEMA_VERSION
+    if not base["file_sha256"]:
+        base["file_sha256"] = sha256_file(path)
+    for row in rows:
+        row.update({key: value for key, value in base.items() if key != "source_path"})
+    return rows
+
+
+def parse_pst(path: Path, signature: FileSignature, timezone_name: str, backend: str) -> list[dict[str, object]]:
+    """Waehlt einen expliziten oder automatisch verfuegbaren PST-Importer."""
+    selected = backend
+    if selected == "auto":
+        try:
+            import pypff  # noqa: F401
+            selected = "libpff"
+        except ImportError:
+            selected = "outlook"
+    LOGGER.info("PST-Backend: %s", selected)
+    if selected == "libpff":
+        return parse_pst_libpff(path, signature, timezone_name)
+    if selected == "outlook":
+        rows = parse_pst_outlook(path, signature, timezone_name)
+        for row in rows:
+            row["pst_backend"] = "outlook"
+        return rows
+    raise ValueError(f"Unbekanntes PST-Backend: {backend}")
+
+
+def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str, pst_backend: str = "auto") -> list[dict[str, object]]:
+    """Kapselt Fehler pro Quelle, damit eine defekte Datei den Lauf nicht abbricht."""
+    base = signature.__dict__.copy()
+    base.update({"source_file_path": signature.source_path, "archive_path": "", "outlook_folder": "", "outlook_entry_id": ""})
     base["cache_schema_version"] = CACHE_SCHEMA_VERSION
     if not base["file_sha256"]:
         base["file_sha256"] = sha256_file(path)
     try:
         if signature.file_ext == ".eml":
             parsed = parse_eml(path, timezone_name)
+        elif signature.file_ext == ".msg":
+            parsed = parse_msg(path, timezone_name)
+        elif signature.file_ext == ".pst":
+            return parse_pst(path, signature, timezone_name, pst_backend)
         else:
             raise ValueError(f"Nicht unterstuetztes Format: {signature.file_ext}")
-        return {**base, **parsed}
+        return [{**base, **parsed}]
     except Exception as exc:
-        return {
+        return [{
             **base,
             "message_id": "",
             "in_reply_to": "",
@@ -446,11 +772,11 @@ def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str) ->
             "mime_defects": "",
             "parse_status": "error",
             "parse_error": str(exc),
-        }
+        }]
 
 
 def discover_mail_files(input_path: Path) -> list[Path]:
-    """Findet .eml-Dateien rekursiv oder akzeptiert eine einzelne .eml-Datei."""
+    """Findet unterstuetzte Maildateien rekursiv oder akzeptiert eine einzelne Datei."""
     if input_path.is_file():
         return [input_path] if input_path.suffix.lower() in SUPPORTED_EXTENSIONS else []
     return sorted(
@@ -467,7 +793,7 @@ def load_cache(cache_path: Path, refresh: bool) -> pd.DataFrame:
     return pd.read_pickle(cache_path)
 
 
-def cached_row_matches(cached_row: pd.Series, signature: FileSignature, hash_check: bool) -> bool:
+def cached_row_matches(cached_row: pd.Series, signature: FileSignature, hash_check: bool, pst_backend: str) -> bool:
     """Prueft, ob eine Cache-Zeile fuer die aktuelle Datei wiederverwendet werden darf."""
     if cached_row.get("cache_schema_version") != CACHE_SCHEMA_VERSION:
         return False
@@ -477,13 +803,15 @@ def cached_row_matches(cached_row: pd.Series, signature: FileSignature, hash_che
         return False
     if hash_check and cached_row.get("file_sha256") != signature.file_sha256:
         return False
+    if signature.file_ext == ".pst" and pst_backend != "auto" and cached_row.get("pst_backend") != pst_backend:
+        return False
     return True
 
 
-def parse_indexed_mail(index: int, total: int, path: Path, signature: FileSignature, timezone_name: str) -> tuple[int, dict[str, object]]:
+def parse_indexed_mail(index: int, total: int, path: Path, signature: FileSignature, timezone_name: str, pst_backend: str) -> tuple[int, list[dict[str, object]]]:
     """Hilfsfunktion fuer paralleles Parsen mit stabiler Ergebnisreihenfolge."""
     LOGGER.info("[%s/%s] Parse %s", index + 1, total, path)
-    return index, parse_mail_file(path, signature, timezone_name)
+    return index, parse_mail_file(path, signature, timezone_name, pst_backend)
 
 
 def build_dataframe(
@@ -493,48 +821,61 @@ def build_dataframe(
     hash_check: bool = False,
     workers: int = 1,
     timezone_name: str = "Europe/Berlin",
+    pst_backend: str = "auto",
+    paths_override: list[Path] | None = None,
+    progress_callback: Callable[[int, int, Path, str], None] | None = None,
 ) -> pd.DataFrame:
     """Baut den vollstaendigen Master-DataFrame aus Cache und neu geparsten Mails."""
-    paths = discover_mail_files(input_path)
+    paths = paths_override if paths_override is not None else discover_mail_files(input_path)
+    if any(path.suffix.lower() == ".pst" for path in paths):
+        workers = 1  # Outlook-COM und PST-Stores werden bewusst seriell verarbeitet.
     cached = load_cache(cache_path, refresh)
-    cached_by_path = {
-        row["source_path"]: row
-        for _, row in cached.iterrows()
-    } if not cached.empty and "source_path" in cached.columns else {}
+    cached_by_path: dict[str, list[dict[str, object]]] = {}
+    if not cached.empty and "source_path" in cached.columns:
+        for _, row in cached.iterrows():
+            key = str(row.get("source_file_path") or row.get("source_path"))
+            cached_by_path.setdefault(key, []).append(dict(row))
 
-    rows: list[dict[str, object] | None] = [None] * len(paths)
+    rows: list[list[dict[str, object]] | None] = [None] * len(paths)
     parse_jobs: list[tuple[int, Path, FileSignature]] = []
     for index, path in enumerate(paths):
         signature = file_signature(path, include_hash=hash_check)
-        cached_row = cached_by_path.get(signature.key)
-        if cached_row is not None and cached_row_matches(cached_row, signature, hash_check):
-            rows[index] = dict(cached_row)
+        cached_rows = cached_by_path.get(signature.key)
+        if cached_rows and cached_row_matches(pd.Series(cached_rows[0]), signature, hash_check, pst_backend):
+            rows[index] = cached_rows
+            if progress_callback:
+                progress_callback(index + 1, len(paths), path, "cache")
             continue
 
         parse_jobs.append((index, path, signature))
 
     if workers <= 1 or len(parse_jobs) <= 1:
         for index, path, signature in parse_jobs:
-            _, row = parse_indexed_mail(index, len(paths), path, signature, timezone_name)
+            _, row = parse_indexed_mail(index, len(paths), path, signature, timezone_name, pst_backend)
             rows[index] = row
+            if progress_callback:
+                progress_callback(index + 1, len(paths), path, "parsed")
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [
-                executor.submit(parse_indexed_mail, index, len(paths), path, signature, timezone_name)
+                executor.submit(parse_indexed_mail, index, len(paths), path, signature, timezone_name, pst_backend)
                 for index, path, signature in parse_jobs
             ]
             for future in as_completed(futures):
                 index, row = future.result()
                 rows[index] = row
+                if progress_callback:
+                    completed = sum(item is not None for item in rows)
+                    progress_callback(completed, len(paths), paths[index], "parsed")
 
-    dataframe = pd.DataFrame(row for row in rows if row is not None)
+    dataframe = pd.DataFrame(row for source_rows in rows if source_rows is not None for row in source_rows)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     dataframe.to_pickle(cache_path)
     return dataframe
 
 
-def write_output(dataframe: pd.DataFrame, output_path: Path) -> None:
-    """Schreibt den DataFrame je nach Dateiendung als CSV, Excel oder Parquet."""
+def write_output(dataframe: pd.DataFrame, output_path: Path, markdown_link_mode: str = "full") -> None:
+    """Schreibt den DataFrame als Tabelle oder gut lesbares Austauschdokument."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = output_path.suffix.lower()
     if suffix == ".csv":
@@ -552,8 +893,91 @@ def write_output(dataframe: pd.DataFrame, output_path: Path) -> None:
         dataframe.to_excel(output_path, index=False)
     elif suffix == ".parquet":
         dataframe.to_parquet(output_path, index=False)
+    elif suffix == ".json":
+        dataframe.to_json(output_path, orient="records", force_ascii=False, indent=2, date_format="iso")
+    elif suffix == ".xml":
+        root = ET.Element("emails", count=str(len(dataframe)))
+        for _, row in dataframe.iterrows():
+            email_node = ET.SubElement(root, "email")
+            for column, value in row.items():
+                node = ET.SubElement(email_node, str(column))
+                if not pd.isna(value):
+                    node.text = re.sub(r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]", "", str(value))
+        ET.ElementTree(root).write(output_path, encoding="utf-8", xml_declaration=True)
+    elif suffix in {".md", ".markdown"}:
+        with output_path.open("w", encoding="utf-8", newline="\n") as file:
+            file.write(f"# MailAnalyst Export\n\n{len(dataframe)} Nachrichten\n\n")
+            for number, (_, row) in enumerate(dataframe.iterrows(), start=1):
+                subject = str(row.get("subject", "") or "(ohne Betreff)").replace("\n", " ")
+                file.write(f"## {number}. {subject}\n\n")
+                for label, column in (("Datum", "sent_datetime_de"), ("Von", "from_email"),
+                                      ("An", "to_emails"), ("CC", "cc_emails"),
+                                      ("Anlagen", "attachment_names"), ("Quelle", "source_path")):
+                    value = str(row.get(column, "") or "").replace("\n", " ")
+                    if value:
+                        file.write(f"- **{label}:** {value}\n")
+                file.write("\n### Inhalt\n\n")
+                body = prepare_analysis_text(str(row.get("body_text_clean", "") or ""), markdown_link_mode)
+                file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
     else:
-        raise ValueError("Bitte .csv, .xlsx oder .parquet als Ausgabeendung verwenden.")
+        raise ValueError("Bitte .csv, .xlsx, .parquet, .json, .xml oder .md als Ausgabeendung verwenden.")
+
+
+def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode: str = "full") -> None:
+    """Schreibt chronologische Monatsdateien plus maschinenlesbaren Suchindex."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data = dataframe.copy()
+    if "sent_at_utc" in data.columns:
+        parsed_dates = pd.to_datetime(data["sent_at_utc"], errors="coerce", utc=True)
+    else:
+        parsed_dates = pd.Series(pd.NaT, index=data.index, dtype="datetime64[ns, UTC]")
+    data["_chunk"] = parsed_dates.dt.strftime("%Y-%m").fillna("unbekannt")
+    data["_sort_date"] = parsed_dates
+    data = data.sort_values(["_sort_date", "subject"], na_position="last")
+
+    index_rows: list[dict[str, object]] = []
+    for chunk, group in data.groupby("_chunk", sort=True):
+        year = chunk[:4] if chunk != "unbekannt" else "unbekannt"
+        chunk_dir = output_dir / year
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        chunk_path = chunk_dir / f"{chunk}.md"
+        with chunk_path.open("w", encoding="utf-8", newline="\n") as file:
+            file.write(f"# E-Mails {chunk}\n\n{len(group)} Nachrichten\n\n")
+            for number, (_, row) in enumerate(group.iterrows(), start=1):
+                anchor = f"mail-{number:05d}"
+                subject = str(row.get("subject", "") or "(ohne Betreff)").replace("\n", " ")
+                file.write(f"<a id=\"{anchor}\"></a>\n\n## {number}. {subject}\n\n")
+                metadata = (
+                    ("Datum", "sent_datetime_de"), ("Von", "from_email"), ("An", "to_emails"),
+                    ("CC", "cc_emails"), ("Message-ID", "message_id"), ("Anlagen", "attachment_names"),
+                    ("PST-Ordner", "outlook_folder"), ("Quelle", "source_path"),
+                )
+                for label, column in metadata:
+                    value = str(row.get(column, "") or "").replace("\n", " ")
+                    if value and value.lower() != "nan":
+                        file.write(f"- **{label}:** {value}\n")
+                file.write("\n### Inhalt\n\n")
+                body = prepare_analysis_text(str(row.get("body_text_clean", "") or ""), link_mode)
+                file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
+                index_rows.append({
+                    "chunk": chunk,
+                    "markdown_file": str(chunk_path.relative_to(output_dir)),
+                    "anchor": anchor,
+                    "sent_at_utc": row.get("sent_at_utc", ""),
+                    "sent_datetime_de": row.get("sent_datetime_de", ""),
+                    "from_email": row.get("from_email", ""),
+                    "to_emails": row.get("to_emails", ""),
+                    "cc_emails": row.get("cc_emails", ""),
+                    "subject": row.get("subject", ""),
+                    "message_id": row.get("message_id", ""),
+                    "attachment_names": row.get("attachment_names", ""),
+                    "source_path": row.get("source_path", ""),
+                    "body_preview": row.get("body_preview", ""),
+                })
+
+    index_frame = pd.DataFrame(index_rows)
+    index_frame.to_json(output_dir / "index.jsonl", orient="records", lines=True, force_ascii=False, date_format="iso")
+    index_frame.to_csv(output_dir / "index.csv", index=False, encoding="utf-8-sig")
 
 
 def default_log_path(output_path: Path) -> Path:
@@ -638,16 +1062,20 @@ def list_export_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
 
 def parse_args() -> argparse.Namespace:
     """Definiert die Kommandozeilenoptionen fuer den Batchlauf."""
-    parser = argparse.ArgumentParser(description="Outlook/Mailstore .eml Export in eine strukturierte Tabelle umwandeln.")
-    parser.add_argument("--input", "-i", type=Path, default=Path("."), help="Datei oder Ordner mit .eml Dateien.")
-    parser.add_argument("--output", "-o", type=Path, default=Path("out") / "mail_metadata.xlsx", help="Zieldatei: .xlsx, .csv oder .parquet.")
+    parser = argparse.ArgumentParser(description="Outlook-Dateien (.eml, .msg, .pst) strukturiert exportieren.")
+    parser.add_argument("--input", "-i", type=Path, default=Path("."), help="Datei oder Ordner mit .eml, .msg oder .pst Dateien.")
+    parser.add_argument("--output", "-o", type=Path, default=Path("out") / "mail_metadata.xlsx", help="Zieldatei: .xlsx, .csv, .parquet, .json, .xml oder .md.")
     parser.add_argument("--list-output", type=Path, help="Optionale reduzierte Review-/Microsoft-Lists-Datei: .xlsx oder .csv.")
+    parser.add_argument("--markdown-dir", type=Path,
+                        help="Optionaler Markdown-Datensatz: Monatsdateien nach Jahren plus index.csv/index.jsonl.")
     parser.add_argument("--log-output", type=Path, help="Optionale Logdatei. Standard: parse_log.txt neben dem Masterexport.")
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="Pfad zur DataFrame-Cachedatei.")
     parser.add_argument("--refresh", action="store_true", help="Cache ignorieren und alle Dateien neu parsen.")
     parser.add_argument("--hash-check", action="store_true", help="Auch unveraenderte Dateien per SHA-256 gegen den Cache pruefen. Sicherer, aber langsamer.")
     parser.add_argument("--workers", type=int, default=max(1, min(4, os.cpu_count() or 1)), help="Parallele Parser-Threads fuer neue/geaenderte Dateien.")
     parser.add_argument("--timezone", default="Europe/Berlin", help="Zeitzone fuer deutsche Datums-/Kalenderfelder.")
+    parser.add_argument("--pst-backend", choices=("auto", "libpff", "outlook"), default="auto",
+                        help="PST-Importer: automatisch, Outlook-unabhaengiges libpff oder klassisches Outlook.")
     return parser.parse_args()
 
 
@@ -663,16 +1091,20 @@ def main() -> None:
     LOGGER.info("Output: %s", args.output.resolve())
     if args.list_output:
         LOGGER.info("List-Output: %s", args.list_output.resolve())
+    if args.markdown_dir:
+        LOGGER.info("Markdown-Ordner: %s", args.markdown_dir.resolve())
     LOGGER.info("Cache: %s", args.cache.resolve())
     LOGGER.info("Timezone: %s", args.timezone)
     LOGGER.info("Refresh: %s", args.refresh)
     LOGGER.info("Hash-Check: %s", args.hash_check)
     LOGGER.info("Workers: %s", args.workers)
 
-    dataframe = build_dataframe(args.input, args.cache, args.refresh, args.hash_check, args.workers, args.timezone)
+    dataframe = build_dataframe(args.input, args.cache, args.refresh, args.hash_check, args.workers, args.timezone, args.pst_backend)
     write_output(dataframe, args.output)
     if args.list_output:
         write_output(list_export_dataframe(dataframe), args.list_output)
+    if args.markdown_dir:
+        write_markdown_dataset(dataframe, args.markdown_dir)
 
     ok_count = int((dataframe["parse_status"] == "ok").sum()) if "parse_status" in dataframe else 0
     error_count = int((dataframe["parse_status"] == "error").sum()) if "parse_status" in dataframe else 0
@@ -686,6 +1118,8 @@ def main() -> None:
     LOGGER.info("Export: %s", args.output.resolve())
     if args.list_output:
         LOGGER.info("List-Export: %s", args.list_output.resolve())
+    if args.markdown_dir:
+        LOGGER.info("Markdown-Ordner: %s", args.markdown_dir.resolve())
     LOGGER.info("Log: %s", log_path.resolve())
 
 

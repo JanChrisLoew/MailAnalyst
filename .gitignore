@@ -2,6 +2,9 @@
 __pycache__/
 .mailanalyst_cache/
 *.pyc
+build/
+dist/
+*.spec
 
 input_emails/*
 !input_emails/.gitkeep

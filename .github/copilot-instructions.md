@@ -2,11 +2,12 @@
 
 ## Project Context
 
-This repository contains a small Python CLI for parsing exported Outlook/MailStore `.eml` files into structured tabular data.
+This repository contains a small Python CLI and desktop GUI for parsing `.eml`, `.msg`, and `.pst` Outlook mail sources into structured data.
 
 The project is intentionally lightweight:
 
 - Main script: `mail_analyst.py`
+- Desktop GUI: `mail_analyst_gui.py`
 - Dependencies: `requirements.txt`
 - User documentation: `README.md`
 - Input placeholder: `input_emails/`
@@ -44,7 +45,7 @@ Validate syntax with:
 
 ## Data Handling Rules
 
-- Only `.eml` files are supported by design.
+- `.eml`, `.msg`, and `.pst` mail sources are supported. PST parsing requires classic Outlook on Windows.
 - Do not commit real email files, generated exports, caches, or `.venv`.
 - `input_emails/` and `out/` are placeholder folders; keep their `.gitkeep` files.
 - Keep full data in Parquet as the master output.
