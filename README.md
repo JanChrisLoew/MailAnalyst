@@ -2,24 +2,61 @@
 
 Ein lokales Python-Werkzeug, um Outlook-E-Mails aus `.eml`, `.msg` und `.pst` auszulesen und strukturiert bereitzustellen. Neben der Kommandozeile gibt es eine minimalistische Desktop-Oberflaeche.
 
-Die [Projektziele](PROJECT_GOALS.md) beschreiben den fachlichen Nutzen, den vorgesehenen Umfang und offene Festlegungen. Der [Reviewbericht](REVIEW_REPORT.md) dokumentiert den technischen Stand und die empfohlenen nächsten Schritte.
+## Dokumentation
+
+| Einstieg | Inhalt |
+| --- | --- |
+| [Projektziele](PROJECT_GOALS.md) | Fachlicher Nutzen, Umfang und offene Nutzerentscheidungen |
+| [Aktueller Status](docs/STATUS.md) | Erledigtes, offene Aufgaben mit IDs und nächste Prioritäten |
+| [Architektur](docs/01_guides/ARCHITECTURE.md) | Modulstruktur und gemeinsame Entwicklungsregeln |
+| [Datenmodell](docs/01_guides/DATA_MODEL.md) | Felder, Herkunft, Datumsannahmen und Exportsemantik |
+| [Agent-Einstieg](AGENTS.md) | Kontextauswahl und Hinweise für Coding Agents |
+| [Prüfskill](.agents/skills/mailanalyst-verify/SKILL.md) | Wiederholbarer Ablauf für vollständige App- und EXE-Abnahmen |
+| [Historischer Review](docs/02_reports/2026-09-04_review_report.md) / [Refactoring-Abnahme](docs/02_reports/2026-09-05_refactor_verification.md) | Befunde und Nachweise des jeweiligen Prüfzeitpunkts |
 
 ## Dateien im Projekt
 
-Das Projekt besteht bewusst nur aus:
+Das Projekt trennt Einstiegspunkte, Anwendungslogik, Oberfläche und Tests:
 
 ```text
 mail_analyst.py
 mail_analyst_gui.py
+mailanalyst/
+tests/
+docs/
+    STATUS.md
+    01_guides/
+    02_reports/
+assets/fonts/
+build_exe.ps1
 requirements.txt
+requirements-dev.txt
+PROJECT_GOALS.md
+AGENTS.md
 README.md
 .gitignore
 .github\copilot-instructions.md
+.github\workflows\checks.yml
+.agents\skills\mailanalyst-verify\SKILL.md
 input_emails\
 out\
 ```
 
-Die Ordner `input_emails` und `out` sind nur Platzhalter. Ihre Inhalte werden nicht ins Repository uebernommen.
+Die beiden Einstiegsskripte delegieren an das Paket `mailanalyst`. Python-Imports erfolgen direkt aus dem Paket, beispielsweise aus `mailanalyst.checks.preflight` und `mailanalyst.checks.system`. Die früheren Kompatibilitätsmodule und Funktions-Reexports aus `mail_analyst.py` wurden entfernt. Fachlogik liegt ausschließlich im Paket. Die Ordner `input_emails` und `out` sind nur Platzhalter. Ihre Inhalte werden nicht ins Repository uebernommen.
+
+## Entwicklung und Tests
+
+Eigene Python-Dateien bleiben bei höchstens 200 physischen Zeilen. Eine Datei hat eine klare Zuständigkeit; GUI-Code und Fachlogik werden getrennt gehalten.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -m compileall -q mailanalyst tests
+.\.venv\Scripts\python.exe -m pip check
+```
+
+Die Tests verwenden ausschließlich synthetische E-Mails. Sie prüfen Parser und Cache, Exporte gegen einen vor der Aufteilung erzeugten Vergleichsbestand, beide CLI-Einstiege, den Tkinter-Workflow, die Dateigröße und die Importstruktur. GitHub Actions führt diese Prüfungen unter Windows aus. Reale MSG-/PST-Archive und große Mailbestände benötigen weiterhin eigene Tests.
+
+Alternativ zum bisherigen CLI-Einstieg funktioniert `python -m mailanalyst` mit denselben Optionen.
 
 Fuer GitHub Copilot liegt eine kurze Projektanweisung unter `.github\copilot-instructions.md`. Sie beschreibt Setup, Run-Kommandos und wichtige Datenregeln fuer dieses Repository.
 
@@ -87,11 +124,11 @@ Fuer Markdown kann vor dem Lauf die Linkdarstellung gewaehlt werden:
 
 Parquet und JSON bleiben davon unberuehrt und enthalten weiterhin die vollstaendigen Masterdaten. Die getroffene Auswahl wird zusammen mit Eingabe, Ausgabeprofil, PST-Backend und Quellenanzahl in `processing_options.json` dokumentiert.
 
-In der Oberflaeche kann eine einzelne `.eml`-, `.msg`- oder `.pst`-Datei oder ein kompletter Ordner ausgewaehlt werden. Fuer PST stehen `Automatisch`, `Ohne Outlook (libpff)` und `Klassisches Outlook` zur Wahl. Nach dem Lauf zeigt eine Tabelle Datum, Absender, Betreff, Anlagen, Quellformat und Parserstatus.
+In der Oberflaeche kann eine einzelne `.eml`-, `.msg`- oder `.pst`-Datei oder ein kompletter Ordner ausgewaehlt werden. Fuer PST stehen `Automatisch`, `Ohne Outlook (libpff)` und `Klassisches Outlook` zur Wahl. Nach dem Lauf zeigt eine Tabelle Datum, Absender, Betreff, Quellformat und Parserstatus.
 
 Ueber `Zielordner...` kann die Ausgabe bewusst ausserhalb des Projekt-Repositories abgelegt werden, zum Beispiel auf einem verschluesselten Datentraeger oder in einem separaten Analyse-Workspace. Beim Markdown-Monatsordner liegen Monatsdateien, Indizes und `parse_log.txt` gemeinsam im uebertragbaren Zielordner.
 
-Das Ausgabeprofil `Analysepaket` erzeugt gemeinsam Parquet, JSON, Markdown-Monatsdateien, Indizes und Logdatei. `Pruefen` zeigt vor dem Lauf Anzahl, Formate und Gesamtgroesse der gefundenen Quellen. Die Statuszeile zeigt ausserdem die lokal verfuegbaren Import-Backends.
+Das Ausgabeprofil `Analysepaket` erzeugt gemeinsam Parquet, JSON, Markdown-Monatsdateien, Indizes und Logdatei. Systemcheck und Vorpruefung zeigen vor dem Lauf die verfuegbaren Komponenten und die gefundenen Quellen.
 
 Waehren der Verarbeitung zeigt die Oberflaeche einen Aktivitaetsindikator. Nach einem erfolgreichen Lauf kann der Ausgabeordner direkt geoeffnet werden.
 
@@ -117,20 +154,7 @@ python mail_analyst.py --input archiv.pst --output out\emails.parquet --pst-back
 
 Der Ordner mit den `.eml`-Dateien wird ueber `--input` definiert. Das Skript kann einen Ordner rekursiv durchsuchen oder eine einzelne `.eml`-Datei lesen.
 
-Empfohlene Arbeitsstruktur:
-
-```text
-C:\MailAnalyst\
-|-- mail_analyst.py
-|-- requirements.txt
-|-- README.md
-|-- input_emails\
-|   |-- mail_001.eml
-|   |-- mail_002.eml
-|   `-- unterordner\
-|       `-- mail_003.eml
-`-- out\
-```
+Verwende die vollständige Projektstruktur aus [Dateien im Projekt](README.md#dateien-im-projekt), einschließlich des Pakets `mailanalyst/`. Quelldateien dürfen in Unterordnern von `input_emails/` liegen oder über einen externen Pfad gewählt werden.
 
 Beispiel:
 
@@ -189,7 +213,9 @@ Standardmaessig schreibt das Skript eine Logdatei neben den Masterexport:
 out\parse_log.txt
 ```
 
-Die Logdatei enthaelt Startzeit, Input-/Output-Pfade, Cache-Pfad, Optionen, verarbeitete Dateien, Erfolgs-/Fehleranzahl und bei Fehlern die betroffene Datei mit Fehlermeldung.
+Im CLI-Workflow enthaelt die Logdatei Startzeit, Input-/Output-Pfade, Cache-Pfad, Optionen, verarbeitete Dateien, Erfolgs-/Fehleranzahl und bei Fehlern die betroffene Datei mit Fehlermeldung.
+
+Die GUI verwendet denselben Logger, schreibt aber noch keine gleichwertige vollständige Laufzusammenfassung. Insbesondere bei ausschließlichen Cachetreffern kann `parse_log.txt` leer sein. Die GUI-Auswahl wird separat in `processing_options.json` gespeichert; diese Datei ist noch kein vollständiges Laufmanifest. Der offene Ausbau wird unter LOG-01 in der [Statusübersicht](docs/STATUS.md) geführt.
 
 Ein anderer Logpfad kann explizit angegeben werden:
 
@@ -199,7 +225,7 @@ python mail_analyst.py --input input_emails --output out\emails.parquet --list-o
 
 ## Cache
 
-Standardmaessig wird beim Lauf ein Cache unter `.mailanalyst_cache\mail_metadata.pkl` erstellt. Dadurch werden unveraenderte E-Mails beim naechsten Lauf nicht erneut geparst.
+Die GUI legt ihren Cache unter `<Zielordner>\.mailanalyst_cache\mail_metadata.pkl` ab. Dadurch hängt sie nicht vom Arbeitsordner des Programmstarts ab. Die CLI verwendet weiterhin standardmäßig `.mailanalyst_cache\mail_metadata.pkl` relativ zum Arbeitsordner; mit `--cache` kann ein anderer Pfad gewählt werden. Unveränderte E-Mails müssen beim nächsten Lauf nicht erneut geparst werden. Das bisherige Pickle-Format bleibt vorerst bestehen.
 
 Cache komplett neu aufbauen:
 

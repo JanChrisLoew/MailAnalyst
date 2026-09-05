@@ -12,6 +12,7 @@ if (-not (Test-Path -LiteralPath $Python)) {
     --windowed `
     --onedir `
     --name MailAnalyst `
+    --paths $ProjectDir `
     --collect-all extract_msg `
     --collect-all pyarrow `
     --hidden-import win32timezone `

@@ -1,71 +1,9 @@
-# MailAnalyst Copilot Instructions
+# MailAnalyst – instructions for GitHub Copilot
 
-## Project Context
+Use [AGENTS.md](../AGENTS.md) as the repository entry point. It identifies the project purpose, relevant context and data-handling constraints.
 
-This repository contains a small Python CLI and desktop GUI for parsing `.eml`, `.msg`, and `.pst` Outlook mail sources into structured data.
+Shared development and review rules are maintained in [docs/01_guides/ARCHITECTURE.md](../docs/01_guides/ARCHITECTURE.md#entwicklungsregeln). Follow them instead of maintaining a separate rule set here.
 
-The project is intentionally lightweight:
+Read [docs/STATUS.md](../docs/STATUS.md) for current priorities and [docs/01_guides/DATA_MODEL.md](../docs/01_guides/DATA_MODEL.md) when changing parsing or exports. Setup and verification commands are in [README.md](../README.md#entwicklung-und-tests).
 
-- Main script: `mail_analyst.py`
-- Desktop GUI: `mail_analyst_gui.py`
-- Dependencies: `requirements.txt`
-- User documentation: `README.md`
-- Input placeholder: `input_emails/`
-- Output placeholder: `out/`
-
-Do not add a web app, database, package framework, or complex project structure unless explicitly requested.
-
-## Main Workflow
-
-Use this setup after cloning:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-Run the parser with:
-
-```powershell
-.\.venv\Scripts\python.exe mail_analyst.py --input input_emails --output out\emails.parquet --list-output out\emails_microsoft_list.csv
-```
-
-Run a full rebuild with:
-
-```powershell
-.\.venv\Scripts\python.exe mail_analyst.py --input input_emails --output out\emails.parquet --list-output out\emails_microsoft_list.csv --refresh
-```
-
-Validate syntax with:
-
-```powershell
-.\.venv\Scripts\python.exe -m py_compile mail_analyst.py
-```
-
-## Data Handling Rules
-
-- `.eml`, `.msg`, and `.pst` mail sources are supported. PST parsing requires classic Outlook on Windows.
-- Do not commit real email files, generated exports, caches, or `.venv`.
-- `input_emails/` and `out/` are placeholder folders; keep their `.gitkeep` files.
-- Keep full data in Parquet as the master output.
-- Use the CSV list export for Microsoft Lists or human review.
-
-## Domain Requirements
-
-The tool is used for project claim/evidence work. Preserve traceability:
-
-- Keep `source_path`, `file_sha256`, `message_id`, `sent_at_utc`, and parser status fields.
-- Do not silently drop parse errors; record them in `parse_status` and `parse_error`.
-- Preserve original body variants where possible: `body_text_raw`, `body_text_clean`, `body_html`.
-- German review fields are important: `Datum`, `Jahr`, `Monat`, `Kalenderwoche`, `Wochentag`.
-- Date derivations should use `Europe/Berlin` unless the user explicitly changes `--timezone`.
-
-## Coding Style
-
-- Keep changes in `mail_analyst.py` unless there is a clear reason to add another file.
-- Prefer simple, explicit functions over abstractions.
-- Keep comments short and practical.
-- Use ASCII in files where possible.
-- Do not introduce destructive file operations.
-- If changing output columns, update `README.md` and keep the Microsoft Lists export stable where possible.
+Keep this file as a tool-specific entry point. Update the linked authoritative document when a shared rule changes. Historical reports describe their recorded baseline; they are not the current task list.

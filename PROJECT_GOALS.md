@@ -8,7 +8,9 @@ Dieses Dokument beschreibt die funktionalen Ziele und Rahmenbedingungen der Anwe
 
 Die Abschnitte 2 bis 6 beschreiben den vorgesehenen Funktionsumfang. Die Erfolgskriterien in Abschnitt 7 sind daraus abgeleitete Vorschläge; konkrete Mengen- und Leistungsziele sind noch offen. Technische Empfehlungen aus dem Review sind in Abschnitt 8 gesondert aufgeführt und damit nicht automatisch verbindliche Produktanforderungen.
 
-Dieses Dokument beschreibt den angestrebten Nutzen und Umfang. Die [README](README.md) erklärt die Bedienung; der [Reviewbericht](REVIEW_REPORT.md) dokumentiert technische Befunde, Testgrenzen und Umsetzungsempfehlungen. Ein dokumentiertes Ziel bedeutet nicht, dass es bereits umgesetzt oder verifiziert ist.
+Dieses Dokument beschreibt den angestrebten Nutzen und Umfang. Die [README](README.md) erklärt die Bedienung; der [Reviewbericht](docs/02_reports/2026-09-04_review_report.md) dokumentiert technische Befunde, Testgrenzen und Umsetzungsempfehlungen. Ein dokumentiertes Ziel bedeutet nicht, dass es bereits umgesetzt oder verifiziert ist.
+
+Den aktuellen Erledigungsstand und die nächste Priorität pflegen wir zentral in [docs/STATUS.md](docs/STATUS.md). Feldbedeutungen stehen in [docs/01_guides/DATA_MODEL.md](docs/01_guides/DATA_MODEL.md). Die Zielbeschreibung bleibt davon getrennt.
 
 ## 2. Übergeordnetes Ziel
 
@@ -121,7 +123,7 @@ Für einen belastbaren Pilot mit großen Archiven empfiehlt der Review insbesond
 - Automatisierte Tests und repräsentative MSG-/PST-Testbestände ergänzen.
 - Mailinhalte bei späterer Agentennutzung als Daten behandeln; Rechercheergebnisse auf Quellen zurückführen.
 
-Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzung und Priorisierung sind im [Reviewbericht, Abschnitte 17 und 18](REVIEW_REPORT.md#17-empfohlene-umsetzungsreihenfolge) beschrieben. Der dort vorgeschlagene Einstieg ist Integrität und sichere Laufstruktur.
+Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzung und Priorisierung sind im [Reviewbericht, Abschnitte 17 und 18](docs/02_reports/2026-09-04_review_report.md#17-empfohlene-umsetzungsreihenfolge) beschrieben. Der dort vorgeschlagene Einstieg ist Integrität und sichere Laufstruktur.
 
 ## 9. Noch offene Festlegungen
 

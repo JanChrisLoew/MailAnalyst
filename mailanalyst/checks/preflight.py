@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mail_analyst import discover_mail_files
+from mailanalyst.discovery import discover_mail_files
 
 
 OLE_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")

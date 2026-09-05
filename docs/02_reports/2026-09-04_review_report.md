@@ -2,6 +2,8 @@
 
 Stand: 4. September 2026
 
+Historischer Bericht: Die Fundstellen und Testaussagen beziehen sich auf den Stand vor der Modularisierung. Seit dem 5. September liegen die Implementierungen im Paket `mailanalyst/`; Regressionstests und Architekturprüfungen wurden ergänzt. Aktuelle Zuständigkeiten und verbleibende Grenzen beschreibt [ARCHITECTURE.md](../01_guides/ARCHITECTURE.md). Die ursprünglichen Befunde bleiben als Ausgangsbasis erhalten.
+
 ## 1. Zweck dieses Berichts
 
 Dieser Bericht dokumentiert den technischen und fachlichen Stand von MailAnalyst. Er dient als Arbeitsgrundlage für die nächste Entwicklungsphase.
