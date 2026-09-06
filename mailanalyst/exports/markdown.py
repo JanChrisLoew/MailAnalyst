@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import pandas as pd
+from mailanalyst.exports.tabular import write_csv
 from mailanalyst.text.links import prepare_analysis_text
 
 
@@ -14,7 +15,7 @@ def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode:
         parsed_dates = pd.Series(pd.NaT, index=data.index, dtype="datetime64[ns, UTC]")
     data["_chunk"] = parsed_dates.dt.strftime("%Y-%m").fillna("unbekannt")
     data["_sort_date"] = parsed_dates
-    data = data.sort_values(["_sort_date", "subject"], na_position="last")
+    data = data.sort_values(["_sort_date"] + (["subject"] if "subject" in data else []), na_position="last")
 
     index_rows: list[dict[str, object]] = []
     for chunk, group in data.groupby("_chunk", sort=True):
@@ -42,7 +43,7 @@ def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode:
                 file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
                 index_rows.append({
                     "chunk": chunk,
-                    "markdown_file": str(chunk_path.relative_to(output_dir)),
+                    "markdown_file": chunk_path.relative_to(output_dir).as_posix(),
                     "anchor": anchor,
                     "sent_at_utc": row.get("sent_at_utc", ""),
                     "sent_datetime_de": row.get("sent_datetime_de", ""),
@@ -58,7 +59,7 @@ def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode:
 
     index_frame = pd.DataFrame(index_rows)
     index_frame.to_json(output_dir / "index.jsonl", orient="records", lines=True, force_ascii=False, date_format="iso")
-    index_frame.to_csv(output_dir / "index.csv", index=False, encoding="utf-8-sig")
+    write_csv(index_frame, output_dir / "index.csv")
 
 
 def write_markdown(dataframe: pd.DataFrame, output_path: Path, markdown_link_mode: str = "full") -> None:

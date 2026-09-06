@@ -42,6 +42,8 @@ class SystemStep:
         self.system_continue_button.pack(side="right")
 
     def _start_system_check(self) -> None:
+        if self.app.jobs.busy or self.app.jobs.closing:
+            return
         self.app.unlocked_steps = {0}
         self.app.current_step = 0
         self.app.notebook.select(self.app.system_tab)
@@ -57,6 +59,7 @@ class SystemStep:
         self.app.jobs.submit(
             lambda progress: run_system_check(progress, detected_font_family=font),
             self._finish_system_check, self._finish_system_check_error, self._system_check_progress,
+            on_cancel=self._cancelled,
         )
 
     def _system_check_progress(self, done: int, total: int, label: str) -> None:
@@ -83,5 +86,10 @@ class SystemStep:
 
     def _finish_system_check_error(self, error: str) -> None:
         self.system_status.set(f"Systemcheck fehlgeschlagen: {error}")
+        self.system_retry_button.configure(state="normal")
+        self.system_continue_button.configure(state="disabled")
+
+    def _cancelled(self, _details):
+        self.system_status.set("Systemcheck abgebrochen")
         self.system_retry_button.configure(state="normal")
         self.system_continue_button.configure(state="disabled")

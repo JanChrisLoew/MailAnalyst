@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from mailanalyst.exports.tabular import write_csv
 from mailanalyst.discovery import discover_mail_files
 
 
@@ -86,6 +87,6 @@ def run_preflight(input_path: Path, progress=None) -> list[PreflightResult]:
 def write_preflight_report(results: list[PreflightResult], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = [asdict(result) for result in results]
-    pd.DataFrame(rows).to_csv(output_dir / "preflight_report.csv", index=False, encoding="utf-8-sig")
+    write_csv(pd.DataFrame(rows), output_dir / "preflight_report.csv")
     with (output_dir / "preflight_report.json").open("w", encoding="utf-8") as file:
         json.dump(rows, file, ensure_ascii=False, indent=2)

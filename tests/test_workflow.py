@@ -47,6 +47,13 @@ class WorkflowTests(unittest.TestCase):
         for path in sorted(workspace.rglob("*")):
             if path.is_file():
                 actual[path.relative_to(workspace).as_posix()] = path.read_text(encoding="utf-8")
+        # Only the documented index path separator changes; compare JSON as data.
+        expected["index.csv"] = expected["index.csv"].replace("2026\\", "2026/")
+        expected_index = [json.loads(line) for line in expected.pop("index.jsonl").splitlines()]
+        actual_index = [json.loads(line) for line in actual.pop("index.jsonl").splitlines()]
+        for row in expected_index:
+            row["markdown_file"] = row["markdown_file"].replace("\\", "/")
+        self.assertEqual(actual_index, expected_index)
         self.assertEqual(actual, expected)
         for suffix, reader in (("parquet", pd.read_parquet), ("xlsx", pd.read_excel)):
             path = self.root / f"emails.{suffix}"

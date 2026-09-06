@@ -12,6 +12,7 @@ from mailanalyst.checks.system import SystemCheckResult
 from mailanalyst.gui.resources import _load_private_fonts
 from mailanalyst.gui.theme import COLORS, configure_style
 from mailanalyst.gui.jobs import BackgroundJobs
+from mailanalyst.gui.activity import Activity
 from mailanalyst.gui.steps.system import SystemStep
 from mailanalyst.gui.steps.config import ConfigStep
 from mailanalyst.gui.steps.preflight import PreflightStep
@@ -37,6 +38,7 @@ class MailAnalystApp(tk.Tk):
         self.link_mode = tk.StringVar(value="Kompakte URLs")
         self.refresh_cache = tk.BooleanVar(value=False)
         self.hash_check = tk.BooleanVar(value=False)
+        self.activity_status = tk.StringVar(value="")
         self.result_output_path = tk.StringVar(value="")
         self.system_check_results: list[SystemCheckResult] = []
         self.preflight_results: list[PreflightResult] = []
@@ -50,7 +52,9 @@ class MailAnalystApp(tk.Tk):
         self.preflight_step = PreflightStep(self)
         self.processing_step = ProcessingStep(self)
         self.result_step = ResultStep(self)
+        self.activity = Activity(self)
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self.activity.close)
         self.after(250, self.system_step._start_system_check)
 
     def _build_ui(self) -> None:
@@ -79,6 +83,10 @@ class MailAnalystApp(tk.Tk):
             button = ttk.Button(sidebar, text=label, style="Nav.TButton", command=lambda step=index: self._select_step(step))
             button.pack(fill="x", pady=2)
             self.nav_buttons.append(button)
+        self.cancel_button = ttk.Button(sidebar, text="Abbrechen", command=self.activity.cancel, state="disabled")
+        self.cancel_button.pack(side="bottom", fill="x", pady=8)
+        ttk.Label(sidebar, textvariable=self.activity_status, style="SidebarTitle.TLabel",
+                  wraplength=200).pack(side="bottom", fill="x")
         ttk.Label(sidebar, text="Ihre Daten verlassen diese\nUmgebung nicht.", style="SidebarTitle.TLabel", justify="left").pack(side="bottom", fill="x", padx=10)
 
         self.notebook = ttk.Notebook(shell, style="Content.TNotebook")
@@ -99,15 +107,24 @@ class MailAnalystApp(tk.Tk):
         self.result_step._build_result_tab()
         self._refresh_navigation()
 
+    def _set_job_active(self, active):
+        self.activity.set_active(active)
+
     def _refresh_navigation(self) -> None:
+        busy = self.jobs.busy or self.jobs.closing
+        for index in range(len(self.notebook.tabs())):
+            enabled = index == self.current_step or (not busy and index in self.unlocked_steps)
+            self.notebook.tab(index, state="normal" if enabled else "disabled")
         for index, button in enumerate(self.nav_buttons):
-            if index == self.current_step:
+            if busy:
+                button.configure(state="disabled")
+            elif index == self.current_step:
                 button.configure(style="ActiveNav.TButton", state="normal")
             else:
                 button.configure(style="Nav.TButton", state="normal" if index in self.unlocked_steps else "disabled")
 
     def _select_step(self, step: int) -> None:
-        if step not in self.unlocked_steps:
+        if self.jobs.busy or self.jobs.closing or step not in self.unlocked_steps:
             return
         self.current_step = step
         self.notebook.select(step)

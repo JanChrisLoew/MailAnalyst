@@ -11,15 +11,19 @@ from mailanalyst.parsing.pst_outlook import parse_pst_outlook
 from mailanalyst.hashing import sha256_file
 
 
+def resolve_pst_backend(backend: str) -> str:
+    if backend != "auto":
+        return backend
+    try:
+        import pypff  # noqa: F401
+        return "libpff"
+    except ImportError:
+        return "outlook"
+
+
 def parse_pst(path: Path, signature: FileSignature, timezone_name: str, backend: str) -> list[dict[str, object]]:
     """Waehlt einen expliziten oder automatisch verfuegbaren PST-Importer."""
-    selected = backend
-    if selected == "auto":
-        try:
-            import pypff  # noqa: F401
-            selected = "libpff"
-        except ImportError:
-            selected = "outlook"
+    selected = resolve_pst_backend(backend)
     LOGGER.info("PST-Backend: %s", selected)
     if selected == "libpff":
         return parse_pst_libpff(path, signature, timezone_name)

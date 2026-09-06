@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from mailanalyst.cancellation import Cancellation, Cancelled, check_cancel
 from mailanalyst.checks.preflight import run_preflight, write_preflight_report
 from mailanalyst.config import DEFAULT_CACHE
 from mailanalyst.exports.profiles import write_profile
@@ -24,28 +25,51 @@ class ProcessingOptions:
     hash_check: bool = False
 
 
-def check_sources(source: Path, target: Path, progress=None):
+def check_sources(source: Path, target: Path, progress=None, cancel=None):
+    check_cancel(cancel)
     results = run_preflight(source, progress)
+    check_cancel(cancel)
     write_preflight_report(results, target)
     return results
 
 
-def process_sources(options: ProcessingOptions, progress=None):
+def process_sources(options: ProcessingOptions, progress=None, cancel=None):
+    cancel = cancel or Cancellation()
+    from mailanalyst.runs import Run
+    from mailanalyst.exports.validation import validate_dataset
+    from mailanalyst.config import LOGGER
+
     target = options.target
-    # GUI launches may inherit an unrelated, read-only working directory.
     cache_path = DEFAULT_CACHE if DEFAULT_CACHE.is_absolute() else target / DEFAULT_CACHE
-    configure_logging(target / "parse_log.txt")
-    with (target / "processing_options.json").open("w", encoding="utf-8") as file:
-        json.dump({"input": str(options.source), "output": str(target.resolve()),
-                   "output_profile": options.profile, "pst_backend": options.backend,
-                   "markdown_links": options.links, "selected_sources": len(options.paths)},
-                  file, ensure_ascii=False, indent=2)
-    frame = build_dataframe(
-        options.source, cache_path, refresh=options.refresh, hash_check=options.hash_check,
-        workers=max(1, min(4, os.cpu_count() or 1)),
-        pst_backend={"Automatisch": "auto", "Ohne Outlook (libpff)": "libpff",
-                     "Klassisches Outlook": "outlook"}[options.backend],
-        paths_override=list(options.paths), progress_callback=progress,
-    )
-    write_profile(frame, target, options.profile, options.links)
-    return frame
+    saved = {"input": str(options.source.resolve()), "output": str(target.resolve()),
+             "output_profile": options.profile, "pst_backend": options.backend,
+             "markdown_links": options.links, "selected_sources": [str(path.resolve()) for path in options.paths],
+             "refresh": options.refresh, "hash_check": options.hash_check, "timezone": "Europe/Berlin"}
+    run = Run(target, saved)
+    try:
+        configure_logging(run.root / "parse_log.txt")
+        cancel.check()
+        LOGGER.info("Start MailAnalyst: %s | Optionen: %s", run.root.name, saved)
+        (run.root / "processing_options.json").write_text(json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8")
+        frame = build_dataframe(
+            options.source, cache_path, refresh=options.refresh, hash_check=options.hash_check,
+            workers=max(1, min(4, os.cpu_count() or 1)),
+            pst_backend={"Automatisch": "auto", "Ohne Outlook (libpff)": "libpff",
+                         "Klassisches Outlook": "outlook"}[options.backend],
+            paths_override=list(options.paths), progress_callback=progress, cancel=cancel,
+        )
+        run.record_frame(frame)
+        write_profile(frame, run.pending, options.profile, options.links, cancel=cancel)
+        if (run.pending / "mail_workspace").exists():
+            validate_dataset(run.pending / "mail_workspace", len(frame))
+        cancel.begin_commit()
+        run.publish()
+        run.finish()
+        frame.attrs["run_directory"] = str(run.root)
+        return frame
+    except Cancelled as exc:
+        run.fail(exc, status="cancelled")
+        raise Cancelled(f"Abgebrochen. Laufdetails: {run.root}") from exc
+    except Exception as exc:
+        run.fail(exc)
+        raise RuntimeError(f"{exc} (Laufdetails: {run.root})") from exc

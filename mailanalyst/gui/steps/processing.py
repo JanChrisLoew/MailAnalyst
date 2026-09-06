@@ -29,10 +29,14 @@ class ProcessingStep:
         ttk.Label(tab, textvariable=self.processing_detail, style="Subtitle.TLabel", wraplength=900).grid(row=4, column=0, sticky="w", pady=10)
 
     def _start_processing(self) -> None:
+        if self.app.jobs.busy or self.app.jobs.closing:
+            return
         selected = [Path(result.path) for result in self.app.preflight_results if result.include]
         if not selected:
             return
         write_preflight_report(self.app.preflight_results, Path(self.app.output_dir.get()))
+        self.app.unlocked_steps.discard(4)
+        self.app.result_output_path.set("")
         self.app._unlock_step(3, select=True)
         self.processing_progress["maximum"] = len(selected)
         self.processing_progress["value"] = 0
@@ -43,10 +47,17 @@ class ProcessingStep:
             links=self.app.link_mode.get(), refresh=self.app.refresh_cache.get(), hash_check=self.app.hash_check.get(),
         )
         self.app.jobs.submit(
-            lambda progress: process_sources(options, progress),
+            lambda progress: process_sources(options, progress, cancel=progress.cancel_token),
             lambda frame: self._finish_processing(frame, None, options),
             lambda error: self._finish_processing(pd.DataFrame(), error, options), self._processing_update,
+            on_cancel=self._cancelled,
         )
+
+    def _cancelled(self, details):
+        self.processing_status.set("Verarbeitung abgebrochen")
+        self.app.activity_status.set("Verarbeitung abgebrochen")
+        self.processing_detail.set(details)
+        self.app._select_step(2)
 
     def _processing_update(self, done: int, total: int, path: Path, mode: str) -> None:
         self.processing_progress["value"] = done
@@ -58,5 +69,5 @@ class ProcessingStep:
             messagebox.showerror("Verarbeitung", error)
             self.processing_status.set("Verarbeitung fehlgeschlagen")
             return
-        self.app.result_step.show_results(frame, len(options.paths), options.target)
+        self.app.result_step.show_results(frame, len(options.paths), Path(frame.attrs["run_directory"]))
         self.app._unlock_step(4, select=True)

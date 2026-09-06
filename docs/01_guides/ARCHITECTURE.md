@@ -1,6 +1,6 @@
 # MailAnalyst – Architektur und Entwicklung
 
-Stand: 5. September 2026
+Stand: 6. September 2026
 
 Einstieg und Kontextauswahl: [AGENTS.md](../../AGENTS.md). Aktuelle Prioritäten: [STATUS.md](../STATUS.md). Feldbedeutungen und Formatunterschiede: [DATA_MODEL.md](DATA_MODEL.md).
 
@@ -13,7 +13,10 @@ MailAnalyst ist eine lokale Python-Anwendung mit CLI und Tkinter-GUI. Das Paket 
 | `cli.py`, `__main__.py` | Argumente, CLI-Lauf und Laufprotokoll |
 | `config.py`, `models.py` | Gemeinsame Konstanten und Dateisignatur |
 | `discovery.py`, `hashing.py` | Quellen finden und Dateimerkmale erfassen |
-| `cache.py` | Bestehenden Cache laden und Treffer prüfen |
+| `cache.py` | Versionierten SQLite-/JSON-Cache prüfen, laden und atomar ersetzen |
+| `source_processing.py` | Cachekriterien, Backendwahl und Vorher-/Nachher-Quellenprüfung |
+| `runs.py` | Laufmanifest, Paketveröffentlichung und Abschlussstatus |
+| `legacy_outputs.py`, `cli_paths.py` | CLI-Kompatibilitätskopien und Pfadkollisionsprüfung |
 | `pipeline.py` | Quellen, Cache und Parser zu einem DataFrame zusammenführen |
 | `services.py` | Vorprüfung mit Bericht sowie Verarbeitung eines festen GUI-Auftrags |
 | `parsing/` | EML, MSG, Outlook-PST, libpff-PST, MIME-Hilfen und Importerauswahl |
@@ -22,7 +25,10 @@ MailAnalyst ist eine lokale Python-Anwendung mit CLI und Tkinter-GUI. Das Paket 
 | `checks/` | Dateivorprüfung und Prüfung der Laufzeitumgebung |
 | `gui/app.py` | Fenster, gemeinsame Eingabewerte und Navigation |
 | `gui/steps/` | Eigene Klasse pro Schritt mit den zugehörigen Widgets und Aktionen |
-| `gui/jobs.py` | Hintergrundarbeit und Übergabe von Ereignissen an den Hauptthread |
+| `gui/jobs.py` | Ein nicht als Daemon gestarteter Worker, Queue, Mehrfachstartsperre und geordnetes Schließen |
+| `gui/activity.py` | Eingabe-/Navigationssperren, Abbruchanzeige und Freigabe der GUI-Ressourcen |
+| `cancellation.py` | GUI-unabhängiges Abbruchsignal und synchronisierte Veröffentlichungsgrenze |
+| `text/cells.py` | CSV-Darstellung formelverdächtiger Zeichenfolgen |
 | `gui/theme.py`, `gui/resources.py` | Oberflächengestaltung, Schriftressourcen und Windows-DPI |
 | `tests/` | Synthetische Regressionstests und Architekturprüfungen |
 | `docs/` | Architektur, Datenmodell, aktueller Status und historische Berichte |
@@ -57,7 +63,11 @@ Beim Verarbeitungsstart werden die Tkinter-Werte im Hauptthread in ein unveränd
 
 `BackgroundJobs` führt Arbeit in Threads aus und legt Fortschritt, Ergebnisse und Fehler in eine Queue. Ein von Tkinter geplanter Poll ruft die GUI-Callbacks im Hauptthread auf. Worker lesen keine Tkinter-Variablen und rufen keine Tkinter-Methoden auf.
 
-Mehrfachstart-Sperren, kontrollierter Abbruch und Warten beim Schließen sind weiterhin separate offene Reviewpunkte. Die strukturelle Trennung ersetzt diese Funktionen nicht.
+`BackgroundJobs.submit()` akzeptiert nur einen Auftrag und sperrt weitere Starts bis zur Verarbeitung des Abschlussereignisses und bestätigtem Threadende. `Activity` sperrt Eingaben und Navigation und stellt die ursprünglichen Widgetzustände wieder her. Alle Startmethoden prüfen zusätzlich die zentrale Sperre. Eine neue Vorprüfung oder Verarbeitung entzieht veralteten Ergebnissen die Navigationsfreigabe.
+
+Ein GUI-unabhängiges `Cancellation`-Objekt wird über den Fortschrittsadapter an Service, Pipeline und Quellenprüfung übergeben. Hashschleifen sowie Quellen-/Exportgrenzen prüfen dieses Signal. Bibliotheksaufrufe werden nicht gewaltsam unterbrochen. `begin_commit()` entscheidet atomar zwischen bereits angefordertem Abbruch und beginnender Veröffentlichung. Ein danach eintreffender Abbruch wird abgelehnt; der Abschluss läuft weiter.
+
+Beim Fensterschließen fordert die Jobsteuerung den Abbruch an, unterdrückt weitere GUI-Ergebnis-/Fehlercallbacks und wartet ohne blockierendes `join()` im Tk-Thread auf das Workerende. Erst danach werden Log-Handler und Timer geschlossen und Tk zerstört. Ein hängender Fremdparser kann das Schließen weiterhin verzögern; Prozessisolation ist nicht implementiert.
 
 ## Namenskonvention und Ordnerreihenfolge
 
@@ -108,10 +118,10 @@ Weitere Prüfungen decken Cachetreffer und geänderte Quellen, beide CLI-Aufrufe
 
 Die vorhandenen Befehle `python mail_analyst.py` und `python mail_analyst_gui.py` bleiben erhalten. Zusätzlich ist `python -m mailanalyst` verfügbar. Der PyInstaller-Build verwendet weiterhin den GUI-Einstieg und nimmt das Paket über seine Imports auf. Schriftressourcen werden im Entwicklungsbetrieb relativ zur Projektwurzel, im Build relativ zu `sys._MEIPASS` gefunden.
 
-## Grenzen dieses Refactorings
+## Historische Refactoring-Grenzen und aktueller Ausbau
 
-Parserfelder, Exportinhalte, Cacheformat und grundlegende Importalgorithmen bleiben erhalten. Bei der anschließenden EXE-Prüfung wurde ein bestehender Fehler bei nicht beschreibbarem Startverzeichnis reproduziert: Die GUI legt ihren relativen Standardcache deshalb jetzt innerhalb des gewählten Zielordners ab. Die CLI-Cacheoptionen bleiben unverändert. Beim erneuten Einrichten des Loggers werden alte Handler geschlossen. Beide Korrekturen sind durch Regressionstests abgedeckt.
+Der [Prüfbericht zum Refactoring](../02_reports/2026-09-05_refactor_verification.md) dokumentiert den Stand vom 5. September. Seit dem Integritätsblock vom 6. September ersetzen SQLite-/JSON-Cache und Laufpakete die damalige Cache-/Exportorganisation. Die Nachrichtenspalten bleiben erhalten; Markdown-Indizes verwenden portable Pfadtrenner. Exportvalidierung liegt unter `exports/validation.py`, Einzelexporte werden temporär geschrieben. GUI und CLI teilen Cache, Pipeline, Validierung und Laufmanifest; explizite CLI-Ziele bleiben zusätzliche Kopien.
 
-Die Reviewmaßnahmen zu Pickle, sicheren Laufordnern, Hashintegrität, atomaren Exporten, Skalierung und realen PST-Tests sind damit noch nicht erledigt. Der [Prüfbericht zum Refactoring](../02_reports/2026-09-05_refactor_verification.md) dokumentiert die Abnahme und ihre Grenzen.
+Die Pipeline liefert weiterhin einen vollständigen DataFrame. Dessen `attrs["sources"]` enthält laufbezogene Prüfdatensätze; der GUI-Service ergänzt `attrs["run_directory"]` für die Ergebnisanzeige. Diese Attribute sind keine zusätzlichen Nachrichtenspalten. SQLite ist ein internes Dateiformat, keine neue Produktfunktion zur Datenbankanbindung. Skalierung und reale PST-Abnahme bleiben eigene Arbeiten; die zentrale GUI-Jobsteuerung mit kooperativem Abbruch ist seit dem folgenden GUI-/Exportblock umgesetzt.
 
 Der [Reviewbericht](../02_reports/2026-09-04_review_report.md) bleibt ein historischer Befund mit ursprünglichen Dateinamen und Zeilennummern. Die [Projektziele](../../PROJECT_GOALS.md) beschreiben den fachlichen Auftrag. Neue technische Arbeiten werden gegen diese Ziele und die aktuelle Modulstruktur geplant.

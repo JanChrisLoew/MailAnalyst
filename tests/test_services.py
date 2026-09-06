@@ -33,9 +33,10 @@ class ServiceTests(unittest.TestCase):
                                                     profile, "Automatisch", "Kompakte URLs", hash_check=True)
                         frame = process_sources(options)
                         self.assertEqual(len(frame), 2)
-                        self.assertTrue((target / expected).is_file())
-                        self.assertTrue((target / ".mailanalyst_cache/mail_metadata.pkl").is_file())
-                        saved = json.loads((target / "processing_options.json").read_text(encoding="utf-8"))
+                        run = Path(frame.attrs["run_directory"])
+                        self.assertTrue((run / "exports" / expected).is_file())
+                        self.assertTrue((target / ".mailanalyst_cache/mail_metadata.sqlite3").is_file())
+                        saved = json.loads((run / "processing_options.json").read_text(encoding="utf-8"))
                         self.assertEqual(saved["output"], str(target.resolve()))
                         events = []
                         previous_files = [handler for handler in LOGGER.handlers if isinstance(handler, logging.FileHandler)]

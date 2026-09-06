@@ -1,22 +1,16 @@
-from __future__ import annotations
-from typing import Callable
+"""Assemble deterministic message results and per-source verification records."""
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed
+from typing import Callable
+
 import pandas as pd
-from mailanalyst.models import FileSignature
+
+from mailanalyst.cancellation import check_cancel
+from mailanalyst.cache import load_cache, save_cache
 from mailanalyst.config import LOGGER
-from mailanalyst.cache import cached_row_matches
 from mailanalyst.discovery import discover_mail_files
-from mailanalyst.hashing import file_signature
-from mailanalyst.cache import load_cache
-from mailanalyst.parsing.dispatch import parse_mail_file
-
-
-def parse_indexed_mail(index: int, total: int, path: Path, signature: FileSignature, timezone_name: str, pst_backend: str) -> tuple[int, list[dict[str, object]]]:
-    """Hilfsfunktion fuer paralleles Parsen mit stabiler Ergebnisreihenfolge."""
-    LOGGER.info("[%s/%s] Parse %s", index + 1, total, path)
-    return index, parse_mail_file(path, signature, timezone_name, pst_backend)
+from mailanalyst.source_processing import process_source
 
 
 def build_dataframe(
@@ -29,51 +23,39 @@ def build_dataframe(
     pst_backend: str = "auto",
     paths_override: list[Path] | None = None,
     progress_callback: Callable[[int, int, Path, str], None] | None = None,
+    cancel=None,
 ) -> pd.DataFrame:
-    """Baut den vollstaendigen Master-DataFrame aus Cache und neu geparsten Mails."""
+    check_cancel(cancel)
     paths = paths_override if paths_override is not None else discover_mail_files(input_path)
     if any(path.suffix.lower() == ".pst" for path in paths):
-        workers = 1  # Outlook-COM und PST-Stores werden bewusst seriell verarbeitet.
+        workers = 1
     cached = load_cache(cache_path, refresh)
-    cached_by_path: dict[str, list[dict[str, object]]] = {}
-    if not cached.empty and "source_path" in cached.columns:
-        for _, row in cached.iterrows():
-            key = str(row.get("source_file_path") or row.get("source_path"))
-            cached_by_path.setdefault(key, []).append(dict(row))
+    results = [None] * len(paths)
+    completed = 0
 
-    rows: list[list[dict[str, object]] | None] = [None] * len(paths)
-    parse_jobs: list[tuple[int, Path, FileSignature]] = []
-    for index, path in enumerate(paths):
-        signature = file_signature(path, include_hash=hash_check)
-        cached_rows = cached_by_path.get(signature.key)
-        if cached_rows and cached_row_matches(pd.Series(cached_rows[0]), signature, hash_check, pst_backend):
-            rows[index] = cached_rows
-            if progress_callback:
-                progress_callback(index + 1, len(paths), path, "cache")
-            continue
+    def accept(index, result):
+        nonlocal completed
+        check_cancel(cancel)
+        results[index] = result
+        completed += 1
+        audit = result[2]
+        LOGGER.info("[%s/%s] %s %s", completed, len(paths), audit["mode"], paths[index])
+        if progress_callback:
+            progress_callback(completed, len(paths), paths[index], audit["mode"])
 
-        parse_jobs.append((index, path, signature))
-
-    if workers <= 1 or len(parse_jobs) <= 1:
-        for index, path, signature in parse_jobs:
-            _, row = parse_indexed_mail(index, len(paths), path, signature, timezone_name, pst_backend)
-            rows[index] = row
-            if progress_callback:
-                progress_callback(index + 1, len(paths), path, "parsed")
+    if workers <= 1:
+        for index, path in enumerate(paths):
+            accept(index, process_source(path, cached, hash_check, timezone_name, pst_backend, cancel))
     else:
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = [
-                executor.submit(parse_indexed_mail, index, len(paths), path, signature, timezone_name, pst_backend)
-                for index, path, signature in parse_jobs
-            ]
+            futures = {executor.submit(process_source, path, cached, hash_check, timezone_name, pst_backend, cancel): index
+                       for index, path in enumerate(paths)}
             for future in as_completed(futures):
-                index, row = future.result()
-                rows[index] = row
-                if progress_callback:
-                    completed = sum(item is not None for item in rows)
-                    progress_callback(completed, len(paths), paths[index], "parsed")
-
-    dataframe = pd.DataFrame(row for source_rows in rows if source_rows is not None for row in source_rows)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    dataframe.to_pickle(cache_path)
-    return dataframe
+                accept(futures[future], future.result())
+    entries = {audit["source_file_path"]: entry for rows, entry, audit in results if not audit["errors"]}
+    check_cancel(cancel)
+    save_cache(cache_path, entries)
+    check_cancel(cancel)
+    frame = pd.DataFrame(row for rows, _, _ in results for row in rows)
+    frame.attrs["sources"] = [audit for _, _, audit in results]
+    return frame

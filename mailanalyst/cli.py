@@ -34,44 +34,44 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Orchestriert Parsing, Cache, Masterexport und optionalen List-Export."""
+    """Create a run package and retain explicit CLI output paths as copies."""
+    from mailanalyst.runs import Run
+    from mailanalyst.legacy_outputs import publish_copy
+    from mailanalyst.exports.validation import validate_dataset
+
+    from mailanalyst.cli_paths import validate_paths
+
     args = parse_args()
-    log_path = args.log_output or default_log_path(args.output)
-    configure_logging(log_path)
-
-    started_at = datetime.now(timezone.utc)
-    LOGGER.info("Start MailAnalyst")
-    LOGGER.info("Input: %s", args.input.resolve())
-    LOGGER.info("Output: %s", args.output.resolve())
-    if args.list_output:
-        LOGGER.info("List-Output: %s", args.list_output.resolve())
-    if args.markdown_dir:
-        LOGGER.info("Markdown-Ordner: %s", args.markdown_dir.resolve())
-    LOGGER.info("Cache: %s", args.cache.resolve())
-    LOGGER.info("Timezone: %s", args.timezone)
-    LOGGER.info("Refresh: %s", args.refresh)
-    LOGGER.info("Hash-Check: %s", args.hash_check)
-    LOGGER.info("Workers: %s", args.workers)
-
-    dataframe = build_dataframe(args.input, args.cache, args.refresh, args.hash_check, args.workers, args.timezone, args.pst_backend)
-    write_output(dataframe, args.output)
-    if args.list_output:
-        write_output(list_export_dataframe(dataframe), args.list_output)
-    if args.markdown_dir:
-        write_markdown_dataset(dataframe, args.markdown_dir)
-
-    ok_count = int((dataframe["parse_status"] == "ok").sum()) if "parse_status" in dataframe else 0
-    error_count = int((dataframe["parse_status"] == "error").sum()) if "parse_status" in dataframe else 0
-    elapsed_seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
-    LOGGER.info("Fertig: %s Dateien, %s erfolgreich, %s Fehler.", len(dataframe), ok_count, error_count)
-    if error_count and {"source_path", "parse_error"}.issubset(dataframe.columns):
-        for _, row in dataframe[dataframe["parse_status"] == "error"].iterrows():
-            LOGGER.error("Parse-Fehler: %s | %s", row.get("source_path", ""), row.get("parse_error", ""))
-    LOGGER.info("Laufzeit Sekunden: %.2f", elapsed_seconds)
-    LOGGER.info("Cache: %s", args.cache.resolve())
-    LOGGER.info("Export: %s", args.output.resolve())
-    if args.list_output:
-        LOGGER.info("List-Export: %s", args.list_output.resolve())
-    if args.markdown_dir:
-        LOGGER.info("Markdown-Ordner: %s", args.markdown_dir.resolve())
-    LOGGER.info("Log: %s", log_path.resolve())
+    validate_paths(args)
+    saved = {key: str(value.resolve()) if isinstance(value, Path) else value for key, value in vars(args).items()}
+    run = Run(args.output.parent, saved)
+    try:
+        configure_logging(run.root / "parse_log.txt")
+        LOGGER.info("Start MailAnalyst: %s | Optionen: %s", run.root.name, saved)
+        dataframe = build_dataframe(args.input, args.cache, args.refresh, args.hash_check,
+                                    args.workers, args.timezone, args.pst_backend)
+        run.record_frame(dataframe)
+        exports = [(run.pending / "master" / args.output.name, args.output)]
+        write_output(dataframe, exports[0][0])
+        if args.list_output:
+            path = run.pending / "list" / args.list_output.name
+            write_output(list_export_dataframe(dataframe), path)
+            exports.append((path, args.list_output))
+        if args.markdown_dir:
+            path = run.pending / "mail_workspace"
+            write_markdown_dataset(dataframe, path)
+            validate_dataset(path, len(dataframe))
+            exports.append((path, args.markdown_dir))
+        relative = [(path.relative_to(run.pending), target) for path, target in exports]
+        run.publish()
+        for path, target in relative:
+            publish_copy(run.root / "exports" / path, target)
+        LOGGER.info("Fertig: %s Nachrichten, %s Parserfehler. Laufpaket: %s",
+                    len(dataframe), run.data["parser_errors"], run.root)
+        for handler in LOGGER.handlers:
+            handler.flush()
+        publish_copy(run.root / "parse_log.txt", args.log_output or default_log_path(args.output))
+        run.finish()
+    except Exception as exc:
+        run.fail(exc)
+        raise RuntimeError(f"{exc} (Laufdetails: {run.root})") from exc

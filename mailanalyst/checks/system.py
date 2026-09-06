@@ -11,6 +11,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
+from mailanalyst.text.cells import csv_text
 
 
 @dataclass
@@ -135,5 +136,5 @@ def write_system_check_report(results: list[SystemCheckResult], output_dir: Path
     with csv_path.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=("category", "name", "status", "detail"))
         writer.writeheader()
-        writer.writerows(asdict(result) for result in results)
+        writer.writerows({key: csv_text(value) for key, value in asdict(result).items()} for result in results)
     return csv_path, json_path

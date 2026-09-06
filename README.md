@@ -108,6 +108,10 @@ Die Oberflaeche fuehrt durch fuenf Schritte:
 4. Ausgewaehlte Quellen mit echter Fortschrittsanzeige verarbeiten.
 5. Zusammenfassung und Ergebnistabelle sichten, den vollstaendigen Zielpfad anzeigen oder kopieren sowie Ausgabeordner oder Log oeffnen.
 
+Während eines Systemchecks, einer Vorprüfung oder Verarbeitung ist genau ein Hintergrundauftrag aktiv. Navigation, Eingaben und weitere Starts sind gesperrt. Über **Abbrechen** wird ein Abbruch angefordert; die laufende Parser-/Bibliotheks- oder Schreiboperation darf zunächst sauber zurückkehren. Danach kann der Workflow erneut gestartet werden.
+
+Beim Schließen während eines Auftrags fordert die Anwendung ebenfalls den Abbruch an und wartet sichtbar auf den Worker. Große PST-Parseraufrufe oder blockierende Bibliotheksoperationen können dieses Warten verlängern. Sobald die abschließende Paketveröffentlichung begonnen hat, wird der kurze Abschluss zu Ende geführt; das Fenster schließt danach. Es werden keine Worker gewaltsam beendet.
+
 Die feste Navigation auf der linken Seite zeigt, wo man sich im Ablauf befindet. Ein Schritt wird erst freigeschaltet, wenn er im aktuellen Lauf erreichbar ist. Die Gestaltung basiert ausschliesslich auf dem mit Python gelieferten Tkinter/ttk und benoetigt weder ein Web-Frontend noch ein zusaetzliches UI-Framework.
 
 Die Oberfläche verwendet die lokal gebuendelte Schriftfamilie Mulish sowie die Oberflächenfarben `#414343`, `#D63C24`, `#EF7D00` und `#0090B6`. Die Schrift wird beim Start aus `assets/fonts` nur fuer den laufenden App-Prozess geladen und muss weder in der Entwicklungsumgebung noch auf dem Zielrechner installiert sein. Der Systemcheck bestaetigt, ob Mulish tatsaechlich aktiv ist; nur bei einem Ladefehler verwendet die App Segoe UI als sicheren Fallback. Mulish steht unter der SIL Open Font License; der Lizenztext liegt unter `assets/fonts/OFL.txt` und wird in die portable Anwendung aufgenommen.
@@ -126,7 +130,7 @@ Parquet und JSON bleiben davon unberuehrt und enthalten weiterhin die vollstaend
 
 In der Oberflaeche kann eine einzelne `.eml`-, `.msg`- oder `.pst`-Datei oder ein kompletter Ordner ausgewaehlt werden. Fuer PST stehen `Automatisch`, `Ohne Outlook (libpff)` und `Klassisches Outlook` zur Wahl. Nach dem Lauf zeigt eine Tabelle Datum, Absender, Betreff, Quellformat und Parserstatus.
 
-Ueber `Zielordner...` kann die Ausgabe bewusst ausserhalb des Projekt-Repositories abgelegt werden, zum Beispiel auf einem verschluesselten Datentraeger oder in einem separaten Analyse-Workspace. Beim Markdown-Monatsordner liegen Monatsdateien, Indizes und `parse_log.txt` gemeinsam im uebertragbaren Zielordner.
+Ueber `Zielordner...` kann die Ausgabe bewusst ausserhalb des Projekt-Repositories abgelegt werden, zum Beispiel auf einem verschluesselten Datentraeger oder in einem separaten Analyse-Workspace. Beim Markdown-Monatsordner liegen die Monatsdateien und Indizes unter `exports/mail_workspace/` des Laufordners; `parse_log.txt` liegt direkt im Laufordner.
 
 Das Ausgabeprofil `Analysepaket` erzeugt gemeinsam Parquet, JSON, Markdown-Monatsdateien, Indizes und Logdatei. Systemcheck und Vorpruefung zeigen vor dem Lauf die verfuegbaren Komponenten und die gefundenen Quellen.
 
@@ -168,6 +172,14 @@ Mit absoluten Pfaden:
 .\.venv\Scripts\python.exe "C:\MailAnalyst\mail_analyst.py" --input "D:\Projektarchiv\E-Mails" --output "C:\MailAnalyst\out\emails.parquet" --list-output "C:\MailAnalyst\out\emails_microsoft_list.csv"
 ```
 
+## Laufordner und Ergebnisstatus
+
+Jeder GUI-Lauf erzeugt `<Zielordner>/runs/<Zeit>-<UUID>/` mit `manifest.json`, `parse_log.txt`, `processing_options.json` und den geprüften Ausgaben unter `exports/`. Die Ergebnisanzeige öffnet diesen konkreten Laufordner. Für die Weitergabe den vollständigen Laufordner kopieren. Cache und vorläufige System-/Vorprüfungsberichte bleiben im übergeordneten Zielbereich.
+
+Das Manifest kennzeichnet `completed` beziehungsweise `completed_with_errors` als abgeschlossen; bei letzterem die Parserfehler beachten. `running`, `failed` und `cancelled` sind keine vollständigen Ergebnisse. Ein Abbruch vor Veröffentlichung erhält den Status `cancelled`; bereits vorhandene Dateien unter `.pending/` sind unvollständige Zwischenprodukte. Ein zuvor fertig geschriebener Cache kann dabei für den nächsten Lauf erhalten bleiben. Unterbrochene Läufe werden nicht automatisch fortgesetzt. Ein neues Laufpaket vermischt keine früheren Monatsdateien.
+
+Die CLI legt Laufpakete neben dem Masterexport unter `runs/` an. Die bisherigen Pfade für `--output`, `--list-output`, `--markdown-dir` und Log erhalten zusätzliche Kopien. Mehrere explizite Ziele können nicht gemeinsam atomar ersetzt werden; maßgeblich bleibt das Manifest des Laufpakets. Ein vorheriger Markdown-Zielordner bleibt als `.previous-<UUID>` neben dem neuen Ordner erhalten. Quell-, Cache-, Log- und Exportpfade dürfen sich nicht überschneiden.
+
 ## Ausgaben
 
 Der Masterexport enthaelt alle extrahierten Daten:
@@ -190,6 +202,8 @@ Unterstuetzte Ausgabeformate:
 - `.json`: strukturierter Austausch fuer Skripte und Entwicklerwerkzeuge
 - `.xml`: strukturierter Austausch mit allen Masterfeldern
 - `.md`: gut lesbares Dokument fuer Textsuche und erste Tests mit Coding-Assistenten
+
+CSV und Excel sind geschützte Sichtausgaben: Formelverdächtige CSV-Texte erhalten ein führendes Apostroph, auch im Markdown-CSV-Index und in Prüfberichten. Das betrifft unter anderem Texte mit `=`, `+`, `-` oder `@` am Anfang, einschließlich führender Leer-/Steuerzeichen. Echte numerische Werte bleiben Zahlen. Excel speichert Zeichenfolgen ausdrücklich als Textzellen. JSON, Parquet, JSONL-Indizes und der interne Masterbestand behalten die ursprünglichen Texte. Für eine unveränderte maschinelle Weiterverarbeitung diese strukturierten Formate verwenden.
 
 Markdown kann auch direkt ueber die Kommandozeile erzeugt werden:
 
@@ -215,7 +229,7 @@ out\parse_log.txt
 
 Im CLI-Workflow enthaelt die Logdatei Startzeit, Input-/Output-Pfade, Cache-Pfad, Optionen, verarbeitete Dateien, Erfolgs-/Fehleranzahl und bei Fehlern die betroffene Datei mit Fehlermeldung.
 
-Die GUI verwendet denselben Logger, schreibt aber noch keine gleichwertige vollständige Laufzusammenfassung. Insbesondere bei ausschließlichen Cachetreffern kann `parse_log.txt` leer sein. Die GUI-Auswahl wird separat in `processing_options.json` gespeichert; diese Datei ist noch kein vollständiges Laufmanifest. Der offene Ausbau wird unter LOG-01 in der [Statusübersicht](docs/STATUS.md) geführt.
+Jeder Lauf schreibt sein eigenes `parse_log.txt` mit Start, Optionen, Quellenfortschritt und Abschlusszahlen in den Laufordner. Auch reine Cacheläufe erhalten eine Zusammenfassung. `manifest.json` dokumentiert Quellenprüfungen, Exportdateien und Status; die GUI speichert daneben `processing_options.json`.
 
 Ein anderer Logpfad kann explizit angegeben werden:
 
@@ -225,7 +239,9 @@ python mail_analyst.py --input input_emails --output out\emails.parquet --list-o
 
 ## Cache
 
-Die GUI legt ihren Cache unter `<Zielordner>\.mailanalyst_cache\mail_metadata.pkl` ab. Dadurch hängt sie nicht vom Arbeitsordner des Programmstarts ab. Die CLI verwendet weiterhin standardmäßig `.mailanalyst_cache\mail_metadata.pkl` relativ zum Arbeitsordner; mit `--cache` kann ein anderer Pfad gewählt werden. Unveränderte E-Mails müssen beim nächsten Lauf nicht erneut geparst werden. Das bisherige Pickle-Format bleibt vorerst bestehen.
+Die GUI legt den Cache unter `<Zielordner>/.mailanalyst_cache/mail_metadata.sqlite3` ab. Die CLI verwendet denselben relativen Standardpfad im Arbeitsordner oder einen expliziten Pfad über `--cache`. SQLite enthält versionierte JSON-Daten; alte Pickle-Caches werden nicht geladen. Ein bisheriger `.pkl`-/`.pickle`-Pfad wird auf `.sqlite3` umgestellt, das Original bleibt erhalten. Beschädigte oder inkompatible Caches werden mit Warnung neu aufgebaut.
+
+Geänderte Zeitzonen, Schema-/Parserrevisionen und das tatsächlich gewählte PST-Backend machen Cachetreffer ungültig. Frisch geparste Quellen werden vor und nach dem Lesen gehasht. Ohne `--hash-check` bleiben schnelle Cachetreffer ausdrücklich ungeprüft; der frühere Hash wird im Manifest als `reused_unverified` gekennzeichnet.
 
 Cache komplett neu aufbauen:
 

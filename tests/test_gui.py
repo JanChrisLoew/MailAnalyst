@@ -68,11 +68,12 @@ class GuiTests(unittest.TestCase):
         app.profile.set("CSV")
         self.wait_for(lambda: app.current_step == 4)
         self.assertEqual(len(app.result_step.result_table.get_children()), 2)
-        self.assertEqual(app.result_output_path.get(), str(target.resolve()))
-        self.assertTrue((target / "emails.parquet").exists())
-        self.assertTrue((target / ".mailanalyst_cache/mail_metadata.pkl").exists())
-        self.assertTrue((target / "mail_workspace/index.jsonl").exists())
-        self.assertEqual(len(json.loads((target / "emails.json").read_text(encoding="utf-8"))), 2)
+        run = Path(app.result_output_path.get())
+        self.assertEqual(run.parent, target.resolve() / "runs")
+        self.assertTrue((run / "exports/emails.parquet").exists())
+        self.assertTrue((target / ".mailanalyst_cache/mail_metadata.sqlite3").exists())
+        self.assertTrue((run / "exports/mail_workspace/index.jsonl").exists())
+        self.assertEqual(len(json.loads((run / "exports/emails.json").read_text(encoding="utf-8"))), 2)
         self.assertFalse((self.root / "changed-after-start").exists())
 
     def test_background_errors_arrive_on_main_thread(self):

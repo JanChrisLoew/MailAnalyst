@@ -47,6 +47,8 @@ class PreflightStep:
         self.process_button.pack(side="right")
 
     def _start_preflight(self) -> None:
+        if self.app.jobs.busy or self.app.jobs.closing:
+            return
         if not self.app.input_path.get().strip().strip('"').strip("'"):
             messagebox.showerror("MailAnalyst", "Bitte zuerst eine Eingabedatei oder einen Eingabeordner auswaehlen.")
             return
@@ -63,6 +65,8 @@ class PreflightStep:
         except Exception as exc:
             messagebox.showerror("MailAnalyst", f"Zielordner nicht verwendbar: {exc}")
             return
+        self.app.unlocked_steps = {0, 1, 2}
+        self.app.result_output_path.set("")
         self.app._unlock_step(2, select=True)
         self.process_button.configure(state="disabled")
         self.app.preflight_results = []
@@ -70,9 +74,10 @@ class PreflightStep:
         for item in self.preflight_table.get_children():
             self.preflight_table.delete(item)
         self.app.jobs.submit(
-            lambda progress: check_sources(source, target, progress),
+            lambda progress: check_sources(source, target, progress, cancel=progress.cancel_token),
             self._finish_preflight, lambda error: messagebox.showerror("Vorpruefung", error),
             self._preflight_progress,
+            on_cancel=lambda _: self.preflight_status.set("Vorpruefung abgebrochen"),
         )
 
     def _preflight_progress(self, done: int, total: int, path: Path) -> None:
@@ -90,6 +95,8 @@ class PreflightStep:
         self.process_button.configure(state="normal" if any(result.include for result in results) else "disabled")
 
     def _toggle_preflight_item(self, _event=None) -> None:
+        if self.app.jobs.busy or self.app.jobs.closing:
+            return
         selected = self.preflight_table.selection()
         if not selected:
             return
@@ -103,6 +110,8 @@ class PreflightStep:
         self.process_button.configure(state="normal" if any(item.include for item in self.app.preflight_results) else "disabled")
 
     def _set_status_included(self, status: str, included: bool) -> None:
+        if self.app.jobs.busy or self.app.jobs.closing:
+            return
         for index, result in enumerate(self.app.preflight_results):
             if result.status == status:
                 result.include = included

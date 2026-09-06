@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import pandas as pd
+from mailanalyst.text.cells import csv_text
 
 
 def list_export_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -63,7 +64,8 @@ def list_export_dataframe(dataframe: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_csv(dataframe: pd.DataFrame, output_path: Path) -> None:
-    dataframe.to_csv(output_path, index=False, encoding="utf-8-sig")
+    safe = dataframe.map(csv_text).rename(columns=csv_text)
+    safe.to_csv(output_path, index=False, encoding="utf-8-sig")
 
 
 def write_excel(dataframe: pd.DataFrame, output_path: Path) -> None:
@@ -76,4 +78,10 @@ def write_excel(dataframe: pd.DataFrame, output_path: Path) -> None:
         dataframe[column] = dataframe[column].map(
             lambda value: value[:excel_limit] if isinstance(value, str) and len(value) > excel_limit else value
         )
-    dataframe.to_excel(output_path, index=False)
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        dataframe.to_excel(writer, index=False)
+        for row in writer.sheets["Sheet1"].iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
+                    cell.hyperlink = None
