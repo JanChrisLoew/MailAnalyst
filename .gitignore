@@ -11,3 +11,35 @@ input_emails/*
 
 out/*
 !out/.gitkeep
+
+# Mail archives and generated outputs, including accidental alternate targets.
+*.[eE][mM][lL]
+*.[mM][sS][gG]
+*.[pP][sS][tT]
+*.[oO][sS][tT]
+*.mbox
+*.pkl
+*.pickle
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
+*.xlsx
+*.xlsm
+*.csv
+*.log
+runs/
+.pending*/
+.previous-*/
+
+# Local credentials and private working material.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+private/
+local_data/

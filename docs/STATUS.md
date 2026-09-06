@@ -8,7 +8,7 @@ Der Integritätsblock und der anschließende GUI-/Exportblock vom 6. September s
 
 Nachweise: [GUI-/Exportprüfung](02_reports/2026-09-06_gui_export_safety.md), [Integritätsprüfung](02_reports/2026-09-06_integrity_verification.md). Die [Refactoring-Abnahme vom 5. September](02_reports/2026-09-05_refactor_verification.md) dokumentiert den zuvor vollständig geprüften EML-EXE-Workflow. Alle eigenen Python-Dateien bleiben unter 200 Zeilen. Fachlicher Auftrag: [Projektziele](../PROJECT_GOALS.md).
 
-Integritätsblock und GUI-/Exportblock bilden das gemeinsam geprüfte Änderungspaket für die Git-Übergabe vom 6. September. Den aktuellen Commit- und Synchronisationsstand mit `git status` und `git log` feststellen. Die Windows-CI ist konfiguriert; eine erfolgreiche Ausführung auf GitHub ist noch nicht nachgewiesen.
+Integritätsblock und GUI-/Exportblock bilden das gemeinsam geprüfte Änderungspaket für die Git-Übergabe vom 6. September. Den aktuellen Commit- und Synchronisationsstand mit `git status` und `git log` feststellen. Die Windows-CI ist auf GitHub erfolgreich gelaufen; am 6. September remote bestätigt, siehe Datenschutzprüfbericht.
 
 ## Prioritäten und Statusregeln
 
@@ -21,11 +21,12 @@ Statuswerte: **erledigt**, **teilweise**, **offen**, **Entscheidung offen**. „
 | ID | Priorität | Status | Umfang / nächster Schritt |
 | --- | --- | --- | --- |
 | REPO-01 | P2 | erledigt | Modularisierung und 200-Zeilen-Prüfung; siehe Refactoring-Abnahme vom 5. September. |
-| REPO-02 | P2 | teilweise | Lokale Tests und CI-Konfiguration vorhanden; ersten erfolgreichen GitHub-Lauf noch nachweisen. |
+| REPO-02 | P2 | erledigt | Lokale Tests und Windows-CI erfolgreich; zwei GitHub-Läufe vor der Historienbereinigung am 6. September remote bestätigt. Nachweis: Datenschutzprüfbericht. |
 | REPO-03 | P2 | erledigt | Agent-Einstieg, aktueller Status, Datenmodell und Repository-Prüfskill angelegt; Dokumentationsverweise geprüft. Am 5. September 2026 die verbindliche [Dokumentationsprüfung nach Änderungen](01_guides/ARCHITECTURE.md#dokumentationsprüfung-nach-änderungen) ergänzt und über AGENTS.md eingebunden. |
 | REPO-04 | P3 | offen | Reproduzierbare Abhängigkeiten und zentrale Toolkonfiguration bewerten; bislang Mindestversionen in requirements-Dateien. |
 | REPO-05 | P3 | offen | Einheitliche Formatierung und automatisierte Dokumentations-Linkprüfung in CI ergänzen. |
 | REPO-06 | P2 | erledigt | Bereinigung am 5. September 2026: alte Prüf-Kompatibilitätsmodule und CLI-Funktions-Reexports entfernt; Tests importieren direkt aus dem Paket. Berichte nach `docs/02_reports/` verschoben, README und Prüfskill aktualisiert, drei temporäre Prüfverzeichnisse entfernt. Zwölf Tests einschließlich CLI und Python-GUI bestanden; Skill validiert. Keine erneute EXE-Abnahme, da deren Paketimporte und Ressourcen unverändert sind. |
+| REPO-07 | P1 | erledigt | Öffentliche Commitidentität auf GitHub-Benutzername/Noreply umgestellt, bestehende Historie entsprechend bereinigt und betriebliche Kontextangaben neutralisiert. Ausschlussregeln und Veröffentlichungshinweise ergänzt. Externe Kopien/Caches sind nicht kontrollierbar. [Nachweis](02_reports/2026-09-06_public_repository_privacy.md). |
 
 Namenskonvention am 5. September 2026 umgesetzt: gepflegte Beschreibungen unter `01_guides/`, datierte Berichte unter `02_reports/`; siehe [verbindliche Namensregeln](01_guides/ARCHITECTURE.md#namenskonvention-und-ordnerreihenfolge). Dokumentation und Agent-Verweise wurden auf die neuen Pfade abgestimmt. Technische Paket- und Werkzeugnamen bleiben unverändert.
 
@@ -79,6 +80,6 @@ Die Details stehen in [PROJECT_GOALS.md, offene Festlegungen](../PROJECT_GOALS.m
 
 ## Empfohlener nächster Arbeitsblock
 
-Als nächstes repräsentative MSG-/PST-Importwege praktisch abnehmen und den Großmengenblock vorbereiten. Dafür Archivgröße/Zielhardware und den Umfang des Outlook-unabhängigen PST-Pakets klären. Parallel fachlich festlegen, welche synthetischen Recherchefragen und erwarteten Treffer die Pilotabnahme belegen sollen. Die vollständige EXE-Bedienprüfung des aktuellen Stands sowie der erste erfolgreiche GitHub-CI-Lauf bleiben nachzuweisen.
+Als nächstes repräsentative MSG-/PST-Importwege praktisch abnehmen und den Großmengenblock vorbereiten. Dafür Archivgröße/Zielhardware und den Umfang des Outlook-unabhängigen PST-Pakets klären. Parallel fachlich festlegen, welche synthetischen Recherchefragen und erwarteten Treffer die Pilotabnahme belegen sollen. Die vollständige EXE-Bedienprüfung des aktuellen Stands bleibt nachzuweisen.
 
 Die Übersicht ist kein Auftrag, alle offenen Punkte automatisch umzusetzen. Jeder neue Block erhält einen klaren Umfang und passende Abnahmekriterien.

@@ -287,3 +287,9 @@ Der Masterexport enthaelt mehrere Body-Felder:
 - `body_html`: HTML-Body, falls vorhanden
 
 Wenn keine Plaintext-Version vorhanden ist, wird HTML in lesbaren Plaintext umgewandelt.
+
+## Datenschutz vor Veröffentlichungen
+
+Dieses Repository ist öffentlich. Mailarchive, lokale Exporte, Caches, Logdateien und Zugangsdaten gehören nicht in Git. `.gitignore` schließt typische Mail-/Exportformate auch außerhalb der Standardordner aus. Private Arbeitsunterlagen unter `private/` oder `local_data/` ablegen. Synthetische Testdateien vorzugsweise zur Laufzeit erzeugen; Ausnahmen nicht ungeprüft mit `git add -f` erzwingen.
+
+Vor jedem Commit sowohl die vorgemerkten Dateien als auch die Git-Autor-/Committeridentität prüfen. Für öffentliche Commits einen bewusst gewählten Anzeigenamen und die eigene GitHub-Noreply-Adresse verwenden. `.gitignore` und GitHub-Secret-Scanning schützen nicht vor persönlichen Angaben in Commit-Metadaten oder fachlichen Interna in Texten. Bereits veröffentlichte Daten verschwinden nicht durch einen normalen Löschcommit aus der Historie.
