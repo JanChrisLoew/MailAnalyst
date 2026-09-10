@@ -10,7 +10,8 @@ from mailanalyst.exports.markdown import write_markdown_dataset
 
 
 def write_profile(frame: pd.DataFrame, target: Path, profile: str, links: str, cancel=None) -> None:
-    link_mode = {"Vollstaendige URLs": "full", "Kompakte URLs": "compact", "Nur Linktext": "text_only"}[links]
+    link_mode = {"Vollständige URLs": "full", "Vollstaendige URLs": "full",
+                 "Kompakte URLs": "compact", "Nur Linktext": "text_only"}[links]
     if profile == "Analysepaket":
         check_cancel(cancel)
         write_output(frame, target / "emails.parquet")

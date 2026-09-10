@@ -88,7 +88,7 @@ def run_system_check(
         ("PST-Verarbeitungsweg", lambda: SystemCheckResult(
             "PST-Importer", "Mindestens ein PST-Verarbeitungsweg",
             "ok" if (_module_available("pypff") or (_module_available("win32com.client") and _classic_outlook_registered())) else "warning",
-            "PST-Verarbeitung ist verfuegbar" if (_module_available("pypff") or (_module_available("win32com.client") and _classic_outlook_registered())) else "PST kann in dieser Umgebung derzeit nicht verarbeitet werden",
+            "PST-Komponenten erkannt; tatsaechlicher Importweg noch nicht geprueft" if (_module_available("pypff") or (_module_available("win32com.client") and _classic_outlook_registered())) else "PST kann in dieser Umgebung derzeit nicht verarbeitet werden",
         )),
         ("Temporärer Schreibtest", _temporary_write_check),
         ("Freier Speicherplatz", _disk_space_check),

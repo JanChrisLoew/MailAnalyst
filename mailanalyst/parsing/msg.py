@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from datetime import datetime, timezone
 from mailanalyst.text.cleaning import clean_plain_text
 from mailanalyst.text.dates import derive_date_fields
 from mailanalyst.text.addresses import first_address
@@ -19,8 +20,15 @@ def parse_msg(path: Path, timezone_name: str) -> dict[str, object]:
     try:
         sender = str(getattr(message, "sender", "") or "")
         from_name, from_email = first_address(sender)
-        raw_date = str(getattr(message, "date", "") or "")
-        sent_at, sent_at_utc = parse_datetime(raw_date)
+        date_value = getattr(message, "date", "")
+        raw_date = str(date_value or "")
+        if isinstance(date_value, datetime):
+            if date_value.tzinfo is None:
+                date_value = date_value.replace(tzinfo=timezone.utc)
+            sent_at = date_value.isoformat()
+            sent_at_utc = date_value.astimezone(timezone.utc).isoformat()
+        else:
+            sent_at, sent_at_utc = parse_datetime(raw_date)
         body_text_raw = str(getattr(message, "body", "") or "")
         raw_html = getattr(message, "htmlBody", "") or ""
         body_html = raw_html.decode("utf-8", errors="replace") if isinstance(raw_html, bytes) else str(raw_html)

@@ -18,6 +18,7 @@ from mailanalyst.gui.steps.config import ConfigStep
 from mailanalyst.gui.steps.preflight import PreflightStep
 from mailanalyst.gui.steps.processing import ProcessingStep
 from mailanalyst.gui.steps.result import ResultStep
+from mailanalyst.version import APP_VERSION
 
 
 class MailAnalystApp(tk.Tk):
@@ -26,7 +27,7 @@ class MailAnalystApp(tk.Tk):
     def __init__(self) -> None:
         _load_private_fonts()
         super().__init__()
-        self.title("MailAnalyst")
+        self.title(f"MailAnalyst {APP_VERSION}")
         self.geometry("1240x790")
         self.minsize(980, 640)
         self.configure(background=self.COLORS["background"])
@@ -37,7 +38,7 @@ class MailAnalystApp(tk.Tk):
         self.pst_backend = tk.StringVar(value="Automatisch")
         self.link_mode = tk.StringVar(value="Kompakte URLs")
         self.refresh_cache = tk.BooleanVar(value=False)
-        self.hash_check = tk.BooleanVar(value=False)
+        self.hash_check = tk.BooleanVar(value=True)
         self.activity_status = tk.StringVar(value="")
         self.result_output_path = tk.StringVar(value="")
         self.system_check_results: list[SystemCheckResult] = []
@@ -62,22 +63,18 @@ class MailAnalystApp(tk.Tk):
         header.pack(fill="x")
         tk.Frame(header, width=5, height=30, background=self.COLORS["primary"]).pack(side="left", padx=(0, 12))
         ttk.Label(header, text="MailAnalyst", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="Lokale Aufbereitung von Projektpostfaechern", style="Subtitle.TLabel").pack(side="left", padx=(16, 0), pady=(6, 0))
-        ttk.Label(header, text="●  LOKAL · OFFLINE", style="Offline.TLabel").pack(side="right")
-        brand_line = tk.Frame(self, height=4, background=self.COLORS["surface"])
-        brand_line.pack(fill="x")
-        brand_line.grid_columnconfigure((0, 1, 2), weight=1)
-        tk.Frame(brand_line, background=self.COLORS["primary"], height=4).grid(row=0, column=0, sticky="ew")
-        tk.Frame(brand_line, background=self.COLORS["accent_secondary"], height=4).grid(row=0, column=1, sticky="ew")
-        tk.Frame(brand_line, background=self.COLORS["accent_tertiary"], height=4).grid(row=0, column=2, sticky="ew")
+        ttk.Label(header, text="E-Mail-Archive lokal aufbereiten", style="Subtitle.TLabel").pack(
+            side="left", padx=(16, 0), pady=(6, 0))
+        ttk.Label(header, text="LOKAL · OFFLINE", style="Offline.TLabel").pack(side="right")
+        tk.Frame(self, height=3, background=self.COLORS["primary"]).pack(fill="x")
 
         shell = ttk.Frame(self, padding=(18, 18, 18, 18))
         shell.pack(fill="both", expand=True)
         sidebar = ttk.Frame(shell, style="Sidebar.TFrame", width=230, padding=(12, 22))
         sidebar.pack(side="left", fill="y", padx=(0, 16))
         sidebar.pack_propagate(False)
-        ttk.Label(sidebar, text="WORKFLOW", style="SidebarTitle.TLabel").pack(fill="x", padx=10, pady=(0, 10))
-        nav_items = ("1   Systemcheck", "2   Daten festlegen", "3   Vorpruefung", "4   Verarbeitung", "5   Ergebnis")
+        ttk.Label(sidebar, text="ABLAUF", style="SidebarTitle.TLabel").pack(fill="x", padx=10, pady=(0, 10))
+        nav_items = ("1   Systemcheck", "2   Daten & Ausgabe", "3   Vorprüfung", "4   Verarbeitung", "5   Ergebnis")
         self.nav_buttons: list[ttk.Button] = []
         for index, label in enumerate(nav_items):
             button = ttk.Button(sidebar, text=label, style="Nav.TButton", command=lambda step=index: self._select_step(step))
@@ -96,8 +93,8 @@ class MailAnalystApp(tk.Tk):
         self.preflight_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=28)
         self.processing_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=28)
         self.result_tab = ttk.Frame(self.notebook, style="Surface.TFrame", padding=28)
-        for title, tab in (("1  Systemcheck", self.system_tab), ("2  Konfiguration", self.config_tab),
-                           ("3  Vorpruefung", self.preflight_tab), ("4  Verarbeitung", self.processing_tab),
+        for title, tab in (("1  Systemcheck", self.system_tab), ("2  Daten & Ausgabe", self.config_tab),
+                           ("3  Vorprüfung", self.preflight_tab), ("4  Verarbeitung", self.processing_tab),
                            ("5  Ergebnis", self.result_tab)):
             self.notebook.add(tab, text=title)
         self.system_step._build_system_tab()
@@ -126,6 +123,7 @@ class MailAnalystApp(tk.Tk):
     def _select_step(self, step: int) -> None:
         if self.jobs.busy or self.jobs.closing or step not in self.unlocked_steps:
             return
+        self.notebook.tab(step, state="normal")
         self.current_step = step
         self.notebook.select(step)
         self._refresh_navigation()

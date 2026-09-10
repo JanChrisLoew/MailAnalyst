@@ -6,12 +6,15 @@ from mailanalyst.cancellation import check_cancel
 from mailanalyst.cache import criteria, matches
 from mailanalyst.hashing import file_signature
 from mailanalyst.parsing.dispatch import parse_mail_file, resolve_pst_backend
+from mailanalyst.source_guard import require_preflight
 
 
-def process_source(path, cached, hash_check, timezone_name, pst_backend, cancel=None):
+def process_source(path, cached, hash_check, timezone_name, pst_backend, cancel=None, preflight=None):
     check_cancel(cancel)
+    hash_check = hash_check or preflight is not None
     backend = resolve_pst_backend(pst_backend) if path.suffix.lower() == ".pst" else ""
     before = file_signature(path, include_hash=hash_check, cancel=cancel)
+    require_preflight(before, preflight)
     expected = criteria(before, timezone_name, backend)
     entry = cached.get(before.key)
     hit = entry is not None and matches(entry, expected, hash_check)
@@ -20,6 +23,7 @@ def process_source(path, cached, hash_check, timezone_name, pst_backend, cancel=
         after = file_signature(path, include_hash=hash_check, cancel=cancel)
     else:
         before = file_signature(path, include_hash=True, cancel=cancel)
+        require_preflight(before, preflight)
         expected = criteria(before, timezone_name, backend)
         check_cancel(cancel)
         rows = parse_mail_file(path, before, timezone_name, backend or pst_backend)

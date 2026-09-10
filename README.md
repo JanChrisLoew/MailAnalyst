@@ -8,6 +8,7 @@ Ein lokales Python-Werkzeug, um Outlook-E-Mails aus `.eml`, `.msg` und `.pst` au
 | --- | --- |
 | [Projektziele](PROJECT_GOALS.md) | Fachlicher Nutzen, Umfang und offene Nutzerentscheidungen |
 | [Aktueller Status](docs/STATUS.md) | Erledigtes, offene Aufgaben mit IDs und nächste Prioritäten |
+| [Versions- und Ausbauplanung](docs/01_guides/ROADMAP.md) | Geplante Versionen und Abnahmekriterien vor dem Echtdaten-Pilot |
 | [Architektur](docs/01_guides/ARCHITECTURE.md) | Modulstruktur und gemeinsame Entwicklungsregeln |
 | [Datenmodell](docs/01_guides/DATA_MODEL.md) | Felder, Herkunft, Datumsannahmen und Exportsemantik |
 | [Agent-Einstieg](AGENTS.md) | Kontextauswahl und Hinweise für Coding Agents |
@@ -46,6 +47,23 @@ Die beiden Einstiegsskripte delegieren an das Paket `mailanalyst`. Python-Import
 
 ## Entwicklung und Tests
 
+Aktueller Entwicklungskandidat: **0.5.0-dev.1**, noch keine Betriebsfreigabe.
+Die zentrale Version steht in `mailanalyst/version.py`, im Fenstertitel sowie
+unter `python -m mailanalyst --version`. Laufmanifeste enthalten `application`.
+
+Die Windows-Baseline verwendet Python 3.11.9 und festgehaltene direkte sowie
+transitive Paketversionen. Für einen Neuaufbau der Entwicklungsumgebung:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-windows-lock.txt
+.\.venv\Scripts\python.exe -m scripts.check_doc_links
+```
+
+Die bisherigen requirements-Dateien beschreiben Mindestanforderungen; für
+vergleichbare Windows-Builds dient die Lockdatei. Sie fixiert Versionen, enthält
+aber keine Wheel-Hashes. Aktualisierungen benötigen eine erneute Abnahme.
+
 Eigene Python-Dateien bleiben bei höchstens 200 physischen Zeilen. Eine Datei hat eine klare Zuständigkeit; GUI-Code und Fachlogik werden getrennt gehalten.
 
 ```powershell
@@ -54,7 +72,32 @@ Eigene Python-Dateien bleiben bei höchstens 200 physischen Zeilen. Eine Datei h
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-Die Tests verwenden ausschließlich synthetische E-Mails. Sie prüfen Parser und Cache, Exporte gegen einen vor der Aufteilung erzeugten Vergleichsbestand, beide CLI-Einstiege, den Tkinter-Workflow, die Dateigröße und die Importstruktur. GitHub Actions führt diese Prüfungen unter Windows aus. Reale MSG-/PST-Archive und große Mailbestände benötigen weiterhin eigene Tests.
+Die Tests verwenden ausschließlich synthetische E-Mails. Sie prüfen Parser und Cache, Exporte gegen einen vor der Aufteilung erzeugten Vergleichsbestand, beide CLI-Einstiege, den Tkinter-Workflow, die Dateigröße und die Importstruktur. GitHub Actions führt diese Prüfungen unter Windows aus. Vier zur Laufzeit erzeugte Unicode-MSG-Dateien werden mit dem tatsächlichen `extract-msg`-Parser einschließlich Analysepaket und Cache geprüft. PST-Dateien und repräsentative historische Bestände benötigen weiterhin eigene Abnahmen; die PST-Testdoubles ersetzen diese nicht.
+
+Einen synthetischen MSG-Bestand mit Klartext, HTML, Anlage, Antwortbezug, fehlendem Datum und Zeitumstellungen erzeugen (neuer Zielordner erforderlich):
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.generate_msg_samples --output out\synthetic-msg
+.\.venv\Scripts\python.exe -m unittest tests.test_msg_files -v
+```
+
+Die vier MSG-Dateien liegen unter `input/`, die festgelegten Sollwerte daneben in `expected.json`. Der Generator benötigt kein Outlook, verwendet nur erfundene Inhalte mit `example.test`-Adressen und überschreibt keinen vorhandenen Zielordner. Er ist ein Entwicklungswerkzeug und gehört nicht zur EXE. Details und Grenzen: [synthetische MSG-/PST-Prüfung](docs/02_reports/2026-09-10_synthetic_import_verification.md).
+
+Ein größerer gemischter Bestand mit zehn MSG- und zwölf EML-Varianten pro Wiederholung:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.generate_mail_corpus --output out\mixed-corpus --repeat 25
+.\.venv\Scripts\python.exe -m unittest tests.test_mail_corpus -v
+```
+
+Das erzeugt 550 Nachrichten (250 MSG, 300 EML) unter `input/` mit Unterordnern und
+Sollwerten in `expected.json`. Enthalten sind ANSI-MSG, Unicode/Emoji, lange und
+leere Texte, mehrere Anlagen, MIME-Kodierungen und unterschiedliche EML-Zeichensätze.
+`--repeat` erlaubt 1 bis 1000; der Zielordner muss neu sein. Unter `negative/`
+liegen separat acht beschädigte oder nicht unterstützte Testdateien. Die Datei
+`broken.pst` ist bewusst ungültig und kein PST-Importnachweis. Anlagen mit PDF-,
+XLSX-, PNG- oder ZIP-Namen enthalten nur synthetische Inventar-Nutzdaten, keine
+validen Dokumente dieser Formate. Details: [gemischte Dateiprüfung](docs/02_reports/2026-09-10_mixed_corpus_verification.md).
 
 Alternativ zum bisherigen CLI-Einstieg funktioniert `python -m mailanalyst` mit denselben Optionen.
 
@@ -104,7 +147,7 @@ Die Oberflaeche fuehrt durch fuenf Schritte:
 
 1. Automatischen Systemcheck sichten. Er prueft Laufzeit, Kernpakete, Importer, Ausgabeformate, PST-Verarbeitungswege, temporaeren Schreibzugriff und freien Speicherplatz. Optionale fehlende Komponenten erscheinen als Warnung; echte Blocker sperren den weiteren Ablauf.
 2. Eingabe, separaten Zielordner, Ausgabeprofil und PST-Backend festlegen.
-3. Vorpruefung starten und OK-, Warnungs-, Fehler- sowie ignorierte Quellen sichten. Warnungen koennen ein- oder ausgeschlossen werden; problematische Einzelquellen lassen sich bewusst per Doppelklick einplanen.
+3. Vorpruefung starten und OK-, Warnungs-, Fehler- sowie ignorierte Quellen sichten. Warnungen koennen ein- oder ausgeschlossen werden; fehlerhafte unterstützte Einzelquellen lassen sich bewusst per Doppelklick einplanen. Ignorierte Dateitypen bleiben nicht auswählbar.
 4. Ausgewaehlte Quellen mit echter Fortschrittsanzeige verarbeiten.
 5. Zusammenfassung und Ergebnistabelle sichten, den vollstaendigen Zielpfad anzeigen oder kopieren sowie Ausgabeordner oder Log oeffnen.
 
@@ -117,6 +160,21 @@ Die feste Navigation auf der linken Seite zeigt, wo man sich im Ablauf befindet.
 Die Oberfläche verwendet die lokal gebuendelte Schriftfamilie Mulish sowie die Oberflächenfarben `#414343`, `#D63C24`, `#EF7D00` und `#0090B6`. Die Schrift wird beim Start aus `assets/fonts` nur fuer den laufenden App-Prozess geladen und muss weder in der Entwicklungsumgebung noch auf dem Zielrechner installiert sein. Der Systemcheck bestaetigt, ob Mulish tatsaechlich aktiv ist; nur bei einem Ladefehler verwendet die App Segoe UI als sicheren Fallback. Mulish steht unter der SIL Open Font License; der Lizenztext liegt unter `assets/fonts/OFL.txt` und wird in die portable Anwendung aufgenommen.
 
 Die Vorpruefung kontrolliert Lesbarkeit, Dateigroesse und grundlegende EML-, MSG-/OLE- beziehungsweise PST-Signaturen. Sie schreibt `preflight_report.csv` und `preflight_report.json` in den Zielordner. Parserfehler bleiben davon getrennt und werden weiterhin im Laufprotokoll sowie in den Exportdaten dokumentiert.
+
+Bei Ordnern werden auch nicht unterstützte Dateien inventarisiert; der gewählte
+Zielteilbaum wird ausgeschlossen, Verzeichnis-Symlinks werden nicht rekursiv
+verfolgt. Unterstützte Dateien erhalten einen SHA-256-Fingerabdruck. Jede Auswahl
+wird beim tatsächlichen Import mit Größe, Änderungszeit und Hash abgeglichen,
+auch bei Cachetreffern. Änderungen erfordern eine neue Vorprüfung. Neu hinzugekommene
+Dateien sind nicht Teil einer bereits abgeschlossenen Auswahl.
+
+Vor dem Lesen prüfen GUI und CLI die für die Auswahl benötigten Komponenten und
+Schreibzugriff auf die tatsächlichen Arbeits-, Cache- und Ausgabeorte. Weniger
+als 16 MiB freier Platz blockiert; unter einer groben Reserve von sechs Mal der
+Quellgröße wird gewarnt. Diese Schätzung garantiert keinen ausreichenden Platz
+für entpackte Archive und alle Exporte. Die auftragsbezogenen System- und
+Vorprüfungsberichte liegen zusätzlich im Laufordner. Outlook-Registrierung allein
+bestätigt noch keine erreichbare Sitzung.
 
 Der Systemcheck startet beim Oeffnen der App automatisch. Nach Auswahl eines verwendbaren Zielordners werden seine Ergebnisse als `system_check_report.csv` und `system_check_report.json` gemeinsam mit dem Vorpruefungsbericht dokumentiert.
 
@@ -144,6 +202,16 @@ Waehren der Verarbeitung zeigt die Oberflaeche einen Aktivitaetsindikator. Nach 
 ```
 
 Die portable Anwendung liegt danach unter `dist\MailAnalyst\MailAnalyst.exe`. Der gesamte Ordner `dist\MailAnalyst` muss zusammen verteilt werden; auf dem Zielrechner ist keine separate Python-Installation erforderlich.
+
+Der Build schreibt `build_info.json` mit App-/Python-/Paketversionen, Git-Revision,
+lokalem Änderungsstatus und Quellbaum-Hash. Die Datei ist eingebettet und liegt
+zusätzlich neben der EXE. `package_manifest.json` enthält Dateigrößen und SHA-256
+des Pakets; `RELEASE_NOTES.md` nennt Umfang und Grenzen. Der zugehörige Quellstand
+wird lokal unter `out/build-metadata/source_snapshot.zip` gesichert und nicht
+mit der EXE verteilt. Jeder neue Build ersetzt diese lokalen Buildartefakte.
+Optional kann `build_exe.ps1 -PythonPath <Python-EXE>` eine andere vorbereitete
+Umgebung verwenden. Entwicklungsstarts ohne Buildmetadaten werden ausdrücklich
+als `development` ausgewiesen.
 
 Das Outlook-Backend bindet das Archiv fuer die Dauer des Imports in klassisches Outlook fuer Windows ein und entfernt es danach wieder. Das alternative `libpff`-/`pypff`-Backend liest die PST direkt und benoetigt kein Outlook, muss unter Windows aber separat installiert oder als geprueftes Binary bereitgestellt werden. Bei `Automatisch` wird libpff bevorzugt und andernfalls Outlook verwendet. PST-Dateien werden seriell verarbeitet.
 
@@ -219,6 +287,33 @@ python mail_analyst.py --input input_emails --output out\emails.parquet --markdo
 
 Dabei entstehen Jahresordner mit einer Markdown-Datei pro Monat sowie `index.csv` und `index.jsonl`. Der Index enthaelt unter anderem Zeitraum, Absender, Empfaenger, CC, Betreff, Message-ID, Anlagen und den Verweis auf die zugehoerige Markdown-Stelle.
 
+## Große Bestände und Batches
+
+CLI und GUI verarbeiten Nachrichten über eine lokale SQLite-Arbeitsdatei. Exporte und deren Prüfung laufen inkrementell. Vorprüfung und Ergebnisse zeigen höchstens 500 Einträge pro Seite mit Zurück/Weiter und Scrollbars. Die Vorprüfung filtert Warnungen oder Fehler, die Ergebnisansicht bietet „Nur Fehler“. Auswahländerungen betreffen weiterhin die tatsächlichen Quellen, auch auf späteren Seiten; „Warnungen einschließen/ausschließen“ gilt für alle Quellen. Nachrichten-/Fehlerzahlen gelten immer für den vollständigen Lauf.
+
+Während der Verarbeitung zeigt die GUI die aktuelle Phase, gelesene Nachrichten, abgeschlossene Quellen und die verstrichene Zeit. Eine laufende Aktivitätsanzeige bleibt auch bei unbekannter PST-Gesamtzahl sowie während Export und Rückleseprüfung aktiv. Sie behauptet keinen Gesamtfortschritt in Prozent; der Abschluss erfolgt erst nach Prüfung und Veröffentlichung. Abbruch bleibt bis zur Abschlussgrenze möglich.
+
+GUI-Läufe enthalten zusätzlich `exports/review.sqlite3`: einen kompakten Ergebnisindex ohne Mailtexte. Darüber sind alle Ergebnisse und auch Fehler außerhalb der ersten Seite erreichbar. Ein Doppelklick zeigt Betreff, Herkunft und Fehlertext. Der Index ist Teil des Laufpakets und ebenfalls vertrauliche Ausgabedatei.
+
+Die CLI verwendet standardmäßig Batches von 500 Nachrichten (zulässig: 1 bis 5000):
+
+```powershell
+python mail_analyst.py --input input_emails --output out\emails.parquet --markdown-dir out\mail_workspace --batch-size 500 --workers 4
+```
+
+Eine zusätzliche Textschwelle von etwa 8 MiB begrenzt Batches mit großen Nachrichten. Einzelne Mails und Fremdbibliotheken können mehr Speicher brauchen. Quellpfade und die Vorprüfung wachsen weiterhin mit der Dateianzahl. Für Arbeitsdaten, Cache und Exporte ausreichend freien Plattenplatz vorsehen; daraus entsteht keine feste RAM- oder Laufzeitgarantie. Parquet nutzt ein über alle Batches stabiles Schema; gemischte Zahl-/Textspalten werden zu Text. JSON erhält die ursprünglichen skalaren Typen.
+
+Ein Abbruch veröffentlicht kein unvollständiges Exportpaket. Erfolgreich aktualisierte Caches können bereits vor einem späteren Exportabbruch vorliegen. Eine automatische Wiederaufnahme eines unterbrochenen Imports gibt es noch nicht. Details: [Datenmodell](docs/01_guides/DATA_MODEL.md#batchverarbeitung-und-grenzen).
+
+Der reproduzierbare synthetische Benchmark benötigt jeweils einen neuen Ausgabeordner:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.benchmark_batches --count 1000 --mode eml --output out\benchmark-eml
+.\.venv\Scripts\python.exe -m scripts.benchmark_batches --count 100000 --mode archive-double --output out\benchmark-stream
+```
+
+`eml` erzeugt und parst echte synthetische EML-Dateien. `archive-double` ersetzt nur den PST-Importer durch einen Nachrichtengenerator und ist kein Nachweis für echte PSTs. Beide prüfen frischen Import, Cachelauf und Analysepaket. Die Windows-Messung berichtet den bisherigen Spitzenarbeitssatz des Prozesses.
+
 ## Logdatei
 
 Standardmaessig schreibt das Skript eine Logdatei neben den Masterexport:
@@ -229,7 +324,7 @@ out\parse_log.txt
 
 Im CLI-Workflow enthaelt die Logdatei Startzeit, Input-/Output-Pfade, Cache-Pfad, Optionen, verarbeitete Dateien, Erfolgs-/Fehleranzahl und bei Fehlern die betroffene Datei mit Fehlermeldung.
 
-Jeder Lauf schreibt sein eigenes `parse_log.txt` mit Start, Optionen, Quellenfortschritt und Abschlusszahlen in den Laufordner. Auch reine Cacheläufe erhalten eine Zusammenfassung. `manifest.json` dokumentiert Quellenprüfungen, Exportdateien und Status; die GUI speichert daneben `processing_options.json`.
+Jeder Lauf schreibt sein eigenes `parse_log.txt` mit Start, Optionen, Quellenfortschritt und Abschlusszahlen in den Laufordner. Auch reine Cacheläufe erhalten eine Zusammenfassung. `manifest.json` dokumentiert Gesamtzahlen, Exportdateien und Status und verweist auf die Quellenprüfungen in `sources.jsonl`; die GUI speichert daneben `processing_options.json`.
 
 Ein anderer Logpfad kann explizit angegeben werden:
 
@@ -239,9 +334,9 @@ python mail_analyst.py --input input_emails --output out\emails.parquet --list-o
 
 ## Cache
 
-Die GUI legt den Cache unter `<Zielordner>/.mailanalyst_cache/mail_metadata.sqlite3` ab. Die CLI verwendet denselben relativen Standardpfad im Arbeitsordner oder einen expliziten Pfad über `--cache`. SQLite enthält versionierte JSON-Daten; alte Pickle-Caches werden nicht geladen. Ein bisheriger `.pkl`-/`.pickle`-Pfad wird auf `.sqlite3` umgestellt, das Original bleibt erhalten. Beschädigte oder inkompatible Caches werden mit Warnung neu aufgebaut.
+Die GUI legt den Cache unter `<Zielordner>/.mailanalyst_cache/mail_metadata.sqlite3` ab. Die CLI verwendet denselben relativen Standardpfad im Arbeitsordner oder einen expliziten Pfad über `--cache`. SQLite enthält einzelne versionierte JSON-Nachrichtenzeilen (Speicherformat 2); bisherige SQLite-Caches werden einmalig neu aufgebaut; alte Pickle-Caches werden nicht geladen. Ein bisheriger `.pkl`-/`.pickle`-Pfad wird auf `.sqlite3` umgestellt, das Original bleibt erhalten. Beschädigte oder inkompatible Caches werden mit Warnung neu aufgebaut.
 
-Geänderte Zeitzonen, Schema-/Parserrevisionen und das tatsächlich gewählte PST-Backend machen Cachetreffer ungültig. Frisch geparste Quellen werden vor und nach dem Lesen gehasht. Ohne `--hash-check` bleiben schnelle Cachetreffer ausdrücklich ungeprüft; der frühere Hash wird im Manifest als `reused_unverified` gekennzeichnet.
+Geänderte Zeitzonen, Schema-/Parserrevisionen und das tatsächlich gewählte PST-Backend machen Cachetreffer ungültig. GUI und CLI binden Quellen jetzt stets per SHA-256 an die Vorprüfung; auch Cachetreffer werden aktuell geprüft. `--hash-check` bleibt als kompatible CLI-Option erhalten. Nur direkte Kernaufrufe ohne Vorprüfungsbindung können weiterhin schnelle, als `reused_unverified` gekennzeichnete Cachetreffer verwenden.
 
 Cache komplett neu aufbauen:
 
@@ -249,7 +344,7 @@ Cache komplett neu aufbauen:
 python mail_analyst.py --input input_emails --output out\emails.parquet --refresh
 ```
 
-Strengere Cache-Pruefung mit SHA-256:
+Weiterhin akzeptierte Option (bei CLI-Läufen ohnehin aktiv):
 
 ```powershell
 python mail_analyst.py --input input_emails --output out\emails.parquet --hash-check

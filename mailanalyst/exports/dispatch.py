@@ -5,6 +5,7 @@ import os
 import tempfile
 
 from mailanalyst.exports.validation import validate_output
+from mailanalyst.progress import report
 
 import pandas as pd
 
@@ -16,6 +17,20 @@ from mailanalyst.exports.tabular import write_csv, write_excel
 def _write_output(dataframe: pd.DataFrame, output_path: Path, markdown_link_mode: str = "full") -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     suffix = output_path.suffix.lower()
+    from mailanalyst.record_store import RecordStore
+    if isinstance(dataframe, RecordStore):
+        from mailanalyst.exports import batch_formats
+        from mailanalyst.exports.batch_markdown import write_single
+        if suffix in {".md", ".markdown"}:
+            write_single(dataframe, output_path, markdown_link_mode)
+        else:
+            writers = {".json": batch_formats.write_json, ".csv": batch_formats.write_csv,
+                       ".xlsx": batch_formats.write_excel, ".xlsm": batch_formats.write_excel,
+                       ".xml": batch_formats.write_xml, ".parquet": batch_formats.write_parquet}
+            if suffix not in writers:
+                raise ValueError(f"Nicht unterstuetztes Ausgabeformat: {suffix}")
+            writers[suffix](dataframe, output_path)
+        return
     if suffix in {".md", ".markdown"}:
         write_markdown(dataframe, output_path, markdown_link_mode)
         return
@@ -32,8 +47,10 @@ def write_output(dataframe: pd.DataFrame, output_path: Path, markdown_link_mode:
     os.close(fd)
     temporary = Path(name)
     try:
+        report(dataframe, "Exportieren", output_path.name)
         _write_output(dataframe, temporary, markdown_link_mode)
-        validate_output(temporary, len(dataframe))
+        report(dataframe, "Ausgaben prüfen", output_path.name)
+        validate_output(temporary, len(dataframe), getattr(dataframe, "cancel", None))
         os.replace(temporary, output_path)
     finally:
         temporary.unlink(missing_ok=True)

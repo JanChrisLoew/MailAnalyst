@@ -17,30 +17,31 @@ class ConfigStep:
         tab = self.app.config_tab
         tab.columnconfigure(1, weight=1)
         ttk.Label(tab, text="Daten und Ausgabe festlegen", style="PageTitle.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(tab, text="Waehlen Sie die Mailquelle, den getrennten Zielordner und die gewuenschte Aufbereitung.",
-                  style="Subtitle.TLabel").grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 24))
+        ttk.Label(tab, text="Wählen Sie Mailquelle, getrennten Zielordner und gewünschte Aufbereitung.",
+                  style="Subtitle.TLabel").grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 12))
         self._path_row(tab, 2, "Eingabe", self.app.input_path, self._choose_input_file, self._choose_input_folder)
         self._path_row(tab, 3, "Zielordner", self.app.output_dir, self._choose_output)
-        ttk.Separator(tab).grid(row=4, column=0, columnspan=3, sticky="ew", pady=18)
+        ttk.Separator(tab).grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
         ttk.Label(tab, text="Verarbeitungsoptionen", style="Surface.TLabel", font=(self.app.font_family, 11, "bold")).grid(
             row=5, column=0, columnspan=3, sticky="w", pady=(0, 8))
-        ttk.Label(tab, text="Ausgabeprofil", style="Surface.TLabel").grid(row=6, column=0, sticky="w", pady=8)
+        ttk.Label(tab, text="Ausgabeprofil", style="Surface.TLabel").grid(row=6, column=0, sticky="w", pady=4)
         ttk.Combobox(tab, textvariable=self.app.profile, state="readonly",
-                     values=("Analysepaket", "Parquet", "CSV", "JSON", "Markdown", "Markdown-Monatsordner"), width=32).grid(row=6, column=1, sticky="w", pady=8)
-        ttk.Label(tab, text="PST-Importer", style="Surface.TLabel").grid(row=7, column=0, sticky="w", pady=8)
+                     values=("Analysepaket", "Parquet", "CSV", "JSON", "Markdown", "Markdown-Monatsordner"), width=32).grid(row=6, column=1, sticky="w", pady=4)
+        ttk.Label(tab, text="PST-Importer", style="Surface.TLabel").grid(row=7, column=0, sticky="w", pady=4)
         ttk.Combobox(tab, textvariable=self.app.pst_backend, state="readonly",
-                     values=("Automatisch", "Ohne Outlook (libpff)", "Klassisches Outlook"), width=32).grid(row=7, column=1, sticky="w", pady=8)
-        ttk.Label(tab, text="Markdown-Links", style="Surface.TLabel").grid(row=8, column=0, sticky="w", pady=8)
+                     values=("Automatisch", "Ohne Outlook (libpff)", "Klassisches Outlook"), width=32).grid(row=7, column=1, sticky="w", pady=4)
+        ttk.Label(tab, text="Markdown-Links", style="Surface.TLabel").grid(row=8, column=0, sticky="w", pady=4)
         ttk.Combobox(tab, textvariable=self.app.link_mode, state="readonly",
-                     values=("Vollstaendige URLs", "Kompakte URLs", "Nur Linktext"), width=32).grid(row=8, column=1, sticky="w", pady=8)
+                     values=("Vollständige URLs", "Kompakte URLs", "Nur Linktext"), width=32).grid(row=8, column=1, sticky="w", pady=4)
         options = ttk.Frame(tab, style="Surface.TFrame")
-        options.grid(row=9, column=1, sticky="w", pady=8)
+        options.grid(row=9, column=1, sticky="w", pady=4)
         ttk.Checkbutton(options, text="Cache neu aufbauen", variable=self.app.refresh_cache).pack(side="left")
-        ttk.Checkbutton(options, text="Strenge Hash-Pruefung", variable=self.app.hash_check).pack(side="left", padx=20)
-        ttk.Label(tab, text="Systemcheck abgeschlossen · optionale Warnungen koennen je nach Datenquelle irrelevant sein.",
-                  style="Subtitle.TLabel").grid(row=10, column=0, columnspan=3, sticky="w", pady=(22, 8))
-        ttk.Button(tab, text="Vorpruefung starten  →", style="Primary.TButton", command=self.app.preflight_step._start_preflight).grid(
-            row=11, column=2, sticky="e", pady=(24, 0))
+        ttk.Label(options, text="Quellenprüfung per SHA-256 ist aktiv", style="Subtitle.TLabel").pack(side="left", padx=20)
+        ttk.Label(tab, text="Optionale Warnungen aus dem Systemcheck können je nach Datenquelle unkritisch sein.",
+                  style="Subtitle.TLabel").grid(row=10, column=0, columnspan=3, sticky="w", pady=(10, 4))
+        self.start_button = ttk.Button(tab, text="Vorprüfung starten", style="Primary.TButton",
+                                       command=self.app.preflight_step._start_preflight)
+        self.start_button.grid(row=11, column=2, sticky="e", pady=(8, 0))
 
     def _path_row(self, parent, row: int, label: str, variable: tk.StringVar, command, second_command=None) -> None:
         ttk.Label(parent, text=label, style="Surface.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 10), pady=8)
@@ -52,17 +53,18 @@ class ConfigStep:
             ttk.Button(buttons, text="Ordner...", command=second_command).pack(side="left", padx=(4, 0))
 
     def _choose_input_file(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("Mailquellen", "*.eml *.msg *.pst"), ("Alle Dateien", "*.*")])
+        path = filedialog.askopenfilename(parent=self.app,
+                                          filetypes=[("Mailquellen", "*.eml *.msg *.pst"), ("Alle Dateien", "*.*")])
         if path:
             self.app.input_path.set(path)
 
     def _choose_input_folder(self) -> None:
-        path = filedialog.askdirectory(title="Eingabeordner waehlen")
+        path = filedialog.askdirectory(parent=self.app, title="Eingabeordner wählen")
         if path:
             self.app.input_path.set(path)
 
     def _choose_output(self) -> None:
-        path = filedialog.askdirectory(title="Separaten Zielordner waehlen")
+        path = filedialog.askdirectory(parent=self.app, title="Separaten Zielordner wählen")
         if path:
             self.app.output_dir.set(path)
 

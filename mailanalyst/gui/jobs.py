@@ -10,6 +10,8 @@ class BackgroundJobs:
     def __init__(self, root):
         self.root = root
         self.events = queue.Queue()
+        self._progress_lock = threading.Lock()
+        self._latest_progress = {}
         self.thread = None
         self.cancel_token = None
         self.closing = False
@@ -28,7 +30,9 @@ class BackgroundJobs:
 
         def progress(*args):
             token.check()
-            self.events.put(("progress", on_progress, args))
+            # Keep only the newest update of each shape (phase / source counter).
+            with self._progress_lock:
+                self._latest_progress[len(args)] = (on_progress, args)
 
         progress.cancel_token = token
 
@@ -72,6 +76,12 @@ class BackgroundJobs:
         self.on_closed()
 
     def _drain_events(self):
+        with self._progress_lock:
+            progress = list(self._latest_progress.values())
+            self._latest_progress.clear()
+        if not self.closing:
+            for callback, args in progress:
+                callback(*args)
         for _ in range(100):
             try:
                 kind, callback, args = self.events.get_nowait()
@@ -86,6 +96,7 @@ class BackgroundJobs:
         try:
             self._drain_events()
             if self._completion is not None and not self.thread.is_alive():
+                self._drain_events()
                 self.thread.join()
                 self.thread = None
                 callback, args = self._completion

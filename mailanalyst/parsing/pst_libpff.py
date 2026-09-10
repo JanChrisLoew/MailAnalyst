@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from collections.abc import Iterator
 from datetime import datetime
 from datetime import timezone
 from mailanalyst.config import CACHE_SCHEMA_VERSION
@@ -11,7 +12,7 @@ from mailanalyst.text.dates import parse_datetime
 from mailanalyst.hashing import sha256_file
 
 
-def parse_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -> list[dict[str, object]]:
+def iter_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -> Iterator[dict[str, object]]:
     """Liest eine PST direkt mit pypff, ohne Outlook zu starten."""
     try:
         import pypff
@@ -32,13 +33,20 @@ def parse_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -
             return value.decode("utf-8", errors="replace")
         return str(value or "")
 
-    rows: list[dict[str, object]] = []
     pst_file = pypff.open(str(path.resolve()))
 
-    def walk(folder: object, parent: str = "") -> None:
+    def children(folder, count_name, getter_name, fallback):
+        count = attr(folder, count_name, default=None)
+        if count is not None:
+            for index in range(int(count)):
+                yield getattr(folder, getter_name)(index)
+        else:
+            yield from (attr(folder, fallback, default=[]) or [])
+
+    def walk(folder: object, parent: str = ""):
         folder_name = text_value(attr(folder, "name", "display_name", "get_name", default="Ordner"))
         folder_path = f"{parent}\\{folder_name}" if parent else folder_name
-        messages = attr(folder, "sub_messages", default=[])
+        messages = children(folder, "number_of_sub_messages", "get_sub_message", "sub_messages")
         for index, message in enumerate(messages or []):
             identifier = text_value(attr(message, "identifier", "get_identifier", default=index))
             try:
@@ -55,7 +63,7 @@ def parse_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -
                 attachments = attr(message, "attachments", default=[]) or []
                 attachment_names = [text_value(attr(item, "name", "long_filename", "short_filename", default=""))
                                     for item in attachments]
-                rows.append({
+                yield {
                     "source_path": f"{path.resolve()}::{folder_path}::{identifier}",
                     "source_file_path": str(path.resolve()), "archive_path": str(path.resolve()),
                     "outlook_folder": folder_path, "outlook_entry_id": identifier,
@@ -74,23 +82,27 @@ def parse_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -
                     "has_attachments": bool(attachment_names), "attachment_count": len(attachment_names),
                     "attachment_names": "; ".join(name for name in attachment_names if name),
                     "mime_defects": "", "parse_status": "ok", "parse_error": "",
-                })
+                }
             except Exception as exc:
-                rows.append({"source_path": f"{path.resolve()}::{folder_path}::{identifier}",
+                yield {"source_path": f"{path.resolve()}::{folder_path}::{identifier}",
                              "source_file_path": str(path.resolve()), "archive_path": str(path.resolve()),
                              "outlook_folder": folder_path, "outlook_entry_id": identifier, "pst_backend": "libpff",
-                             "parse_status": "error", "parse_error": str(exc)})
-        for child in (attr(folder, "sub_folders", default=[]) or []):
-            walk(child, folder_path)
+                             "parse_status": "error", "parse_error": str(exc)}
+        for child in children(folder, "number_of_sub_folders", "get_sub_folder", "sub_folders"):
+            yield from walk(child, folder_path)
 
-    try:
-        walk(pst_file.get_root_folder())
-    finally:
-        pst_file.close()
     base = signature.__dict__.copy()
     base["cache_schema_version"] = CACHE_SCHEMA_VERSION
-    if not base["file_sha256"]:
-        base["file_sha256"] = sha256_file(path)
-    for row in rows:
-        row.update({key: value for key, value in base.items() if key != "source_path"})
-    return rows
+    try:
+        if not base["file_sha256"]:
+            base["file_sha256"] = sha256_file(path)
+        for row in walk(pst_file.get_root_folder()):
+            row.update({key: value for key, value in base.items() if key != "source_path"})
+            yield row
+    finally:
+        pst_file.close()
+
+
+def parse_pst_libpff(path, signature, timezone_name):
+    """Compatibility helper for small callers that explicitly need a list."""
+    return list(iter_pst_libpff(path, signature, timezone_name))

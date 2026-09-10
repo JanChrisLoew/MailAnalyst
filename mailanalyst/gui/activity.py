@@ -18,7 +18,7 @@ class Activity:
             self.saved_states = []
             self._disable(app)
             app.cancel_button.state(["!disabled"])
-            app.activity_status.set("Auftrag laeuft")
+            app.activity_status.set("Auftrag läuft")
         else:
             for widget, state in self.saved_states:
                 widget.state(["!disabled", *state])
@@ -38,10 +38,11 @@ class Activity:
         if self.app.jobs.cancel():
             self.app.activity_status.set("Abbruch angefordert.\nAktuelle Operation wird beendet.")
         elif self.app.jobs.busy:
-            self.app.activity_status.set("Abschluss laeuft.\nBitte warten.")
+            self.app.activity_status.set("Abschluss läuft.\nBitte warten.")
         self.app.cancel_button.state(["disabled"])
 
     def close(self):
+        self.app.processing_step.display.stop()
         self.cancel()
         self.app.activity_status.set("Wird geschlossen, sobald\nder Auftrag beendet ist.")
         self.app.jobs.close(self._destroy)

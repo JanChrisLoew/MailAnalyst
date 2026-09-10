@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from collections.abc import Iterator
 from zoneinfo import ZoneInfo
 from datetime import datetime
 from datetime import timezone
@@ -81,7 +82,7 @@ def outlook_mail_row(item: object, pst_path: Path, folder_path: str, timezone_na
     }
 
 
-def parse_pst_outlook(path: Path, signature: FileSignature, timezone_name: str) -> list[dict[str, object]]:
+def iter_pst_outlook(path: Path, signature: FileSignature, timezone_name: str) -> Iterator[dict[str, object]]:
     """Liest MailItems einer PST ueber klassisches Outlook unter Windows."""
     try:
         import win32com.client
@@ -89,28 +90,16 @@ def parse_pst_outlook(path: Path, signature: FileSignature, timezone_name: str) 
     except ImportError as exc:
         raise RuntimeError("PST-Unterstuetzung fehlt. Bitte pywin32 installieren.") from exc
 
-    pythoncom.CoInitialize()
-    outlook = win32com.client.Dispatch("Outlook.Application")
-    namespace = outlook.GetNamespace("MAPI")
-    before = {str(store.FilePath).lower() for store in namespace.Stores if getattr(store, "FilePath", "")}
-    namespace.AddStoreEx(str(path.resolve()), 3)
-    store = next((candidate for candidate in namespace.Stores
-                  if str(getattr(candidate, "FilePath", "")).lower() == str(path.resolve()).lower()), None)
-    if store is None:
-        raise RuntimeError(f"Outlook konnte die PST nicht oeffnen: {path}")
-    root = store.GetRootFolder()
-    rows: list[dict[str, object]] = []
-
-    def walk(folder: object, parent: str = "") -> None:
+    def walk(folder: object, parent: str = ""):
         folder_path = f"{parent}\\{folder.Name}" if parent else str(folder.Name)
         for index in range(1, folder.Items.Count + 1):
             item = folder.Items.Item(index)
             if int(getattr(item, "Class", 0)) == 43:  # olMail
                 try:
-                    rows.append(outlook_mail_row(item, path, folder_path, timezone_name))
+                    yield outlook_mail_row(item, path, folder_path, timezone_name)
                 except Exception as exc:
                     entry_id = str(getattr(item, "EntryID", "") or "")
-                    rows.append({
+                    yield {
                         "source_path": f"{path.resolve()}::{folder_path}::{entry_id}",
                         "source_file_path": str(path.resolve()),
                         "archive_path": str(path.resolve()),
@@ -119,20 +108,40 @@ def parse_pst_outlook(path: Path, signature: FileSignature, timezone_name: str) 
                         "subject": str(getattr(item, "Subject", "") or ""),
                         "parse_status": "error",
                         "parse_error": str(exc),
-                    })
+                    }
         for index in range(1, folder.Folders.Count + 1):
-            walk(folder.Folders.Item(index), folder_path)
+            yield from walk(folder.Folders.Item(index), folder_path)
 
-    try:
-        walk(root)
-    finally:
-        if str(path.resolve()).lower() not in before:
-            namespace.RemoveStore(root)
-        pythoncom.CoUninitialize()
     base = signature.__dict__.copy()
     base["cache_schema_version"] = CACHE_SCHEMA_VERSION
     if not base["file_sha256"]:
         base["file_sha256"] = sha256_file(path)
-    for row in rows:
-        row.update({key: value for key, value in base.items() if key != "source_path"})
-    return rows
+    pythoncom.CoInitialize()
+    namespace, root, added = None, None, False
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        namespace = outlook.GetNamespace("MAPI")
+        target = str(path.resolve()).lower()
+        before = {str(store.FilePath).lower() for store in namespace.Stores if getattr(store, "FilePath", "")}
+        if target not in before:
+            namespace.AddStoreEx(str(path.resolve()), 3)
+            added = True
+        store = next((item for item in namespace.Stores if str(getattr(item, "FilePath", "")).lower() == target), None)
+        if store is None:
+            raise RuntimeError(f"Outlook konnte die PST nicht oeffnen: {path}")
+        root = store.GetRootFolder()
+        for row in walk(root):
+            row.update({key: value for key, value in base.items() if key != "source_path"})
+            row["pst_backend"] = "outlook"
+            yield row
+    finally:
+        try:
+            if added and root is not None:
+                namespace.RemoveStore(root)
+        finally:
+            pythoncom.CoUninitialize()
+
+
+def parse_pst_outlook(path, signature, timezone_name):
+    """Compatibility helper for small callers that explicitly need a list."""
+    return list(iter_pst_outlook(path, signature, timezone_name))

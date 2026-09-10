@@ -12,20 +12,27 @@ MailAnalyst ist eine lokale Python-Anwendung mit CLI und Tkinter-GUI. Das Paket 
 | --- | --- |
 | `cli.py`, `__main__.py` | Argumente, CLI-Lauf und Laufprotokoll |
 | `config.py`, `models.py` | Gemeinsame Konstanten und Dateisignatur |
+| `version.py` | App-Version und gebündelte Buildmetadaten, unabhängig von Parser-/Cacheschema |
+| `source_guard.py` | Vergleich der Importdatei mit dem SHA-256-Vorprüfungsstand |
 | `discovery.py`, `hashing.py` | Quellen finden und Dateimerkmale erfassen |
-| `cache.py` | Versionierten SQLite-/JSON-Cache prüfen, laden und atomar ersetzen |
+| `batch_cache.py`, `record_store.py` | Einzelne Cache-/Nachrichtenzeilen, begrenzte Batches, SQLite-Sortierung und atomarer Cacheersatz |
+| `cache.py` | Gemeinsame Cachekriterien und materialisierende Kompatibilität für Speicherformat 1 |
 | `source_processing.py` | Cachekriterien, Backendwahl und Vorher-/Nachher-Quellenprüfung |
 | `runs.py` | Laufmanifest, Paketveröffentlichung und Abschlussstatus |
 | `legacy_outputs.py`, `cli_paths.py` | CLI-Kompatibilitätskopien und Pfadkollisionsprüfung |
-| `pipeline.py` | Quellen, Cache und Parser zu einem DataFrame zusammenführen |
+| `batch_pipeline.py`, `batch_sources.py` | Begrenzte EML-/MSG-Parallelität und PST-Streaming mit Quellenprüfung |
+| `pipeline.py` | Materialisierende DataFrame-Kompatibilität für kleine direkte Aufrufe |
 | `services.py` | Vorprüfung mit Bericht sowie Verarbeitung eines festen GUI-Auftrags |
 | `parsing/` | EML, MSG, Outlook-PST, libpff-PST, MIME-Hilfen und Importerauswahl |
 | `text/` | Text- und HTML-Aufbereitung, Links, Adressen und Datumsfelder |
 | `exports/` | Formatauswahl, strukturierte Formate, Tabellen, Markdown und Ausgabeprofile |
 | `checks/` | Dateivorprüfung und Prüfung der Laufzeitumgebung |
+| `checks/targets.py` | Auftragsbezogene Komponenten, tatsächliche Schreibziele und Platzwarnungen |
 | `gui/app.py` | Fenster, gemeinsame Eingabewerte und Navigation |
 | `gui/steps/` | Eigene Klasse pro Schritt mit den zugehörigen Widgets und Aktionen |
-| `gui/jobs.py` | Ein nicht als Daemon gestarteter Worker, Queue, Mehrfachstartsperre und geordnetes Schließen |
+| `gui/jobs.py` | Ein Worker, zusammengefasste Fortschrittsmeldungen, Abschlussqueue und geordnetes Schließen |
+| `progress.py`, `gui/processing_display.py` | Typisierte Phasenmeldungen, Nachrichtenzähler und Tk-Laufzeituhr |
+| `review_store.py`, `gui/paging.py` | Kompakter Ergebnisindex sowie begrenzte Seiten und Filter |
 | `gui/activity.py` | Eingabe-/Navigationssperren, Abbruchanzeige und Freigabe der GUI-Ressourcen |
 | `cancellation.py` | GUI-unabhängiges Abbruchsignal und synchronisierte Veröffentlichungsgrenze |
 | `text/cells.py` | CSV-Darstellung formelverdächtiger Zeichenfolgen |
@@ -48,6 +55,8 @@ flowchart TD
     Services --> Checks
     Pipeline --> Parsing[Parser]
     Pipeline --> Cache[Cache]
+    Pipeline --> Store[SQLite-Nachrichtenspeicher]
+    Exports --> Store
     Pipeline --> Sources[Dateisuche und Hashes]
     Parsing --> Text[Text, Adressen und Datum]
     Exports --> Text
@@ -61,13 +70,34 @@ Die Anwendung setzt die fünf Schrittklassen durch Komposition zusammen. Es gibt
 
 Beim Verarbeitungsstart werden die Tkinter-Werte im Hauptthread in ein unveränderliches `ProcessingOptions`-Objekt kopiert. `services.process_sources()` verarbeitet ausschließlich gewöhnliche Python-Werte. Die GUI-Auswahl kann damit nicht nachträglich den Zielort oder das Exportprofil dieses Auftrags verändern.
 
-`BackgroundJobs` führt Arbeit in Threads aus und legt Fortschritt, Ergebnisse und Fehler in eine Queue. Ein von Tkinter geplanter Poll ruft die GUI-Callbacks im Hauptthread auf. Worker lesen keine Tkinter-Variablen und rufen keine Tkinter-Methoden auf.
+Der Auftrag enthält außerdem Kopien der Vorprüfungsergebnisse. Pro gewählter Quelle
+übergibt der Service Größe, Änderungszeit und SHA-256 an die Batchpipeline; Einzel-
+und Archivimport vergleichen diesen Stand direkt beim Lesen, auch bei Cachetreffern.
+Direkte Service-Aufrufe ohne Vorprüfung sowie CLI-Läufe erzeugen zunächst einen
+neuen Vorprüfungsstand. Berichte liegen im Laufordner. Die GUI-Inventarisierung
+erfasst auch nicht unterstützte Dateien und schließt den gewählten Zielteilbaum aus;
+Verzeichnis-Symlinks werden nicht rekursiv verfolgt. Ignorierte Dateien sind nicht auswählbar.
+
+`version.APP_VERSION` ist die zentrale App-Version. `scripts.write_build_info`
+zeichnet Git-Revision, lokalen Änderungsstatus, Quellbaum-Hash und installierte
+Paketversionen auf und sichert den Quellstand lokal als ZIP. Die EXE liest diese
+Metadaten aus einer gebündelten JSON-Datei; Entwicklungsaufrufe kennzeichnen sich
+als `development`. `scripts.package_manifest` schreibt die Dateiprüfsummen des
+portablen Pakets. Die CI verwendet Python 3.11.9 und `requirements-windows-lock.txt`,
+prüft Dokumentations-Dateiziele und führt den Build aus. Abschnittsanker und eine
+einheitliche Codeformatierung sind nicht durch die Linkprüfung abgedeckt.
+
+`BackgroundJobs` führt Arbeit in Threads aus. Fortschritt hält pro Meldungsform nur den neuesten Stand unter einer Sperre; Ergebnisse und Fehler liegen in einer Abschlussqueue. Ein von Tkinter geplanter Poll ruft die GUI-Callbacks im Hauptthread auf. Worker lesen keine Tkinter-Variablen und rufen keine Tkinter-Methoden auf.
 
 `BackgroundJobs.submit()` akzeptiert nur einen Auftrag und sperrt weitere Starts bis zur Verarbeitung des Abschlussereignisses und bestätigtem Threadende. `Activity` sperrt Eingaben und Navigation und stellt die ursprünglichen Widgetzustände wieder her. Alle Startmethoden prüfen zusätzlich die zentrale Sperre. Eine neue Vorprüfung oder Verarbeitung entzieht veralteten Ergebnissen die Navigationsfreigabe.
 
-Ein GUI-unabhängiges `Cancellation`-Objekt wird über den Fortschrittsadapter an Service, Pipeline und Quellenprüfung übergeben. Hashschleifen sowie Quellen-/Exportgrenzen prüfen dieses Signal. Bibliotheksaufrufe werden nicht gewaltsam unterbrochen. `begin_commit()` entscheidet atomar zwischen bereits angefordertem Abbruch und beginnender Veröffentlichung. Ein danach eintreffender Abbruch wird abgelehnt; der Abschluss läuft weiter.
+Ein GUI-unabhängiges `Cancellation`-Objekt wird über den Fortschrittsadapter an Service, Pipeline und Quellenprüfung übergeben. Hashschleifen, einzelne Nachrichten sowie Export-/Validierungsschleifen prüfen dieses Signal. Bibliotheksaufrufe werden nicht gewaltsam unterbrochen. `begin_commit()` entscheidet atomar zwischen bereits angefordertem Abbruch und beginnender Veröffentlichung. Ein danach eintreffender Abbruch wird abgelehnt; der Abschluss läuft weiter.
 
 Beim Fensterschließen fordert die Jobsteuerung den Abbruch an, unterdrückt weitere GUI-Ergebnis-/Fehlercallbacks und wartet ohne blockierendes `join()` im Tk-Thread auf das Workerende. Erst danach werden Log-Handler und Timer geschlossen und Tk zerstört. Ein hängender Fremdparser kann das Schließen weiterhin verzögern; Prozessisolation ist nicht implementiert.
+
+Die GUI übergibt optional einen Phasen-Callback an den Service. `PhaseReporter` begrenzt dessen Frequenz; der bestehende Quellen-Callback bleibt kompatibel. Export und Validierung melden getrennte Phasen. Die Aktivitätsanzeige verwendet während des Laufs keinen Gesamtprozentsatz. Nachrichtenzähler und Uhr werden ausschließlich im Tk-Thread aktualisiert; beim Abschluss, Abbruch und Schließen werden die Anzeige-Timer beendet. Der Quellenbericht der gewählten Auswahl wird im Worker geschrieben.
+
+`exports/review.sqlite3` wird vor Veröffentlichung in begrenzten Batches erzeugt und in die Exporthashes aufgenommen. Der GUI-Leser öffnet ihn kurzzeitig schreibgeschützt und liest höchstens 500 Metadatenzeilen. Er hält keine Mailtexte und keine dauerhafte Verbindung zum Arbeitscache. Die CLI erzeugt diesen GUI-Index derzeit nicht.
 
 ## Namenskonvention und Ordnerreihenfolge
 
@@ -116,12 +146,25 @@ Die Tests verwenden selbst erzeugte EML-Nachrichten mit HTML, Antwortbezug, Datu
 
 Weitere Prüfungen decken Cachetreffer und geänderte Quellen, beide CLI-Aufrufe, den realen Tkinter-Ereignisablauf und die Importstruktur ab. GUI-Tests können ohne grafische Anzeige übersprungen werden; der Windows-CI-Job ist für die Desktop-Zielplattform vorgesehen. CI wird beim nächsten Push beziehungsweise Pull Request ausgeführt.
 
+`tests/msg_samples.py` erzeugt echte Unicode-MSG-Container aus festgelegten synthetischen Werten mit dem CFB-Schreiber von `extract-msg`, ohne MailAnalyst-Parserfunktionen zu verwenden. `tests/test_msg_files.py` prüft den realen MSG-Parser, Herkunft, Datumsgrenzen, beschädigte Dateien, Analysepaket, Cachetreffer und die Invalidierung früherer Parserrevisionen. `scripts/generate_msg_samples.py` stellt denselben Bestand für manuelle Prüfungen bereit. Dies ist kein Outlook-Kompatibilitätsnachweis und keine PST-Dateiprüfung.
+
+Der MSG-Testschreiber unterstützt außerdem ANSI-Strings und mehrere Anlagen.
+`tests/corpus_samples.py` definiert zehn MSG-/zwölf EML-Varianten und separate
+negative Dateiproben; `scripts/generate_mail_corpus.py` erzeugt Wiederholungen
+mit eindeutigen Message-IDs. `tests/test_mail_corpus.py` prüft reale Parser,
+Vorprüfung, sieben Exportformate in unterschiedlicher Prüftiefe sowie einen
+550-Nachrichten-Lauf einschließlich Cache und Ergebnisindex-Seiten.
+
 Die vorhandenen Befehle `python mail_analyst.py` und `python mail_analyst_gui.py` bleiben erhalten. Zusätzlich ist `python -m mailanalyst` verfügbar. Der PyInstaller-Build verwendet weiterhin den GUI-Einstieg und nimmt das Paket über seine Imports auf. Schriftressourcen werden im Entwicklungsbetrieb relativ zur Projektwurzel, im Build relativ zu `sys._MEIPASS` gefunden.
 
 ## Historische Refactoring-Grenzen und aktueller Ausbau
 
 Der [Prüfbericht zum Refactoring](../02_reports/2026-09-05_refactor_verification.md) dokumentiert den Stand vom 5. September. Seit dem Integritätsblock vom 6. September ersetzen SQLite-/JSON-Cache und Laufpakete die damalige Cache-/Exportorganisation. Die Nachrichtenspalten bleiben erhalten; Markdown-Indizes verwenden portable Pfadtrenner. Exportvalidierung liegt unter `exports/validation.py`, Einzelexporte werden temporär geschrieben. GUI und CLI teilen Cache, Pipeline, Validierung und Laufmanifest; explizite CLI-Ziele bleiben zusätzliche Kopien.
 
-Die Pipeline liefert weiterhin einen vollständigen DataFrame. Dessen `attrs["sources"]` enthält laufbezogene Prüfdatensätze; der GUI-Service ergänzt `attrs["run_directory"]` für die Ergebnisanzeige. Diese Attribute sind keine zusätzlichen Nachrichtenspalten. SQLite ist ein internes Dateiformat, keine neue Produktfunktion zur Datenbankanbindung. Skalierung und reale PST-Abnahme bleiben eigene Arbeiten; die zentrale GUI-Jobsteuerung mit kooperativem Abbruch ist seit dem folgenden GUI-/Exportblock umgesetzt.
+`batch_pipeline.build_store()` liefert für CLI und GUI einen offenen `RecordStore`; Aufrufer schließen ihn nach Export und Vorschau. Nachrichten werden einzeln in SQLite abgelegt, PST-Iteratoren bleiben bis zum Abschluss oder Abbruch geöffnet. EML-/MSG-Futures sind auf höchstens zweimal die Workerzahl begrenzt. Die Standardbatchgröße beträgt 500, zusätzlich gilt eine weiche 8-MiB-Textschwelle. Dateisuche und Vorprüfung halten weiterhin Quellenmetadaten im RAM.
+
+Die Batchexporter unter `exports/` lesen Zeilen beziehungsweise Rowgroups. JSON-Validierung besitzt einen inkrementellen Arrayleser; Monatsindizes werden direkt geschrieben und sequenziell geprüft. Das Manifest verweist auf die separat gestreamte `sources.jsonl`; Quellen-Audits sind keine Nachrichtenspalten. Der Service liefert weiterhin höchstens 500 Vorschauzeilen mit Gesamtzahlen in DataFrame-Attributen. Die GUI lädt weitere Seiten und Fehler über `review_store.read_review()` aus dem veröffentlichten kompakten Index. Pro Tabelle werden höchstens 500 Widgetszeilen gerendert; Quellenfilter verwenden die vorhandene Metadatenliste mit stabilen Originalindizes. `pipeline.build_dataframe()` und bisherige DataFrame-Exporter bleiben explizite Kompatibilität für kleine Python-Aufrufe und werden von CLI/GUI nicht als primärer Datenpfad verwendet.
+
+SQLite ist ein internes Dateiformat, keine Produktfunktion zur Datenbankanbindung. Reale PST-Abnahme, Zielhardware und Wiederaufnahme nach Prozessabbruch sind damit nicht gelöst.
 
 Der [Reviewbericht](../02_reports/2026-09-04_review_report.md) bleibt ein historischer Befund mit ursprünglichen Dateinamen und Zeilennummern. Die [Projektziele](../../PROJECT_GOALS.md) beschreiben den fachlichen Auftrag. Neue technische Arbeiten werden gegen diese Ziele und die aktuelle Modulstruktur geplant.

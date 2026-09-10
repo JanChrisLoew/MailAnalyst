@@ -1,13 +1,14 @@
 from __future__ import annotations
 from pathlib import Path
+from collections.abc import Iterator
 from mailanalyst.config import CACHE_SCHEMA_VERSION
 from mailanalyst.models import FileSignature
 from mailanalyst.config import LOGGER
 from mailanalyst.text.dates import derive_date_fields
 from mailanalyst.parsing.eml import parse_eml
 from mailanalyst.parsing.msg import parse_msg
-from mailanalyst.parsing.pst_libpff import parse_pst_libpff
-from mailanalyst.parsing.pst_outlook import parse_pst_outlook
+from mailanalyst.parsing.pst_libpff import parse_pst_libpff, iter_pst_libpff
+from mailanalyst.parsing.pst_outlook import parse_pst_outlook, iter_pst_outlook
 from mailanalyst.hashing import sha256_file
 
 
@@ -35,7 +36,7 @@ def parse_pst(path: Path, signature: FileSignature, timezone_name: str, backend:
     raise ValueError(f"Unbekanntes PST-Backend: {backend}")
 
 
-def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str, pst_backend: str = "auto") -> list[dict[str, object]]:
+def iter_mail_file(path: Path, signature: FileSignature, timezone_name: str, pst_backend: str = "auto") -> Iterator[dict[str, object]]:
     """Kapselt Fehler pro Quelle, damit eine defekte Datei den Lauf nicht abbricht."""
     base = signature.__dict__.copy()
     base.update({"source_file_path": signature.source_path, "archive_path": "", "outlook_folder": "", "outlook_entry_id": ""})
@@ -48,12 +49,17 @@ def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str, ps
         elif signature.file_ext == ".msg":
             parsed = parse_msg(path, timezone_name)
         elif signature.file_ext == ".pst":
-            return parse_pst(path, signature, timezone_name, pst_backend)
+            selected = resolve_pst_backend(pst_backend)
+            if selected not in {"libpff", "outlook"}:
+                raise ValueError(f"Unbekanntes PST-Backend: {selected}")
+            iterator = iter_pst_libpff if selected == "libpff" else iter_pst_outlook
+            yield from iterator(path, signature, timezone_name)
+            return
         else:
             raise ValueError(f"Nicht unterstuetztes Format: {signature.file_ext}")
-        return [{**base, **parsed}]
+        yield {**base, **parsed}
     except Exception as exc:
-        return [{
+        yield {
             **base,
             "message_id": "",
             "in_reply_to": "",
@@ -86,4 +92,9 @@ def parse_mail_file(path: Path, signature: FileSignature, timezone_name: str, ps
             "mime_defects": "",
             "parse_status": "error",
             "parse_error": str(exc),
-        }]
+        }
+
+
+def parse_mail_file(path, signature, timezone_name, pst_backend="auto"):
+    """Compatibility entry point for a small, materialized source result."""
+    return list(iter_mail_file(path, signature, timezone_name, pst_backend))

@@ -9,7 +9,10 @@ from pathlib import Path
 import pandas as pd
 
 from mailanalyst.exports.tabular import write_csv
-from mailanalyst.discovery import discover_mail_files
+from mailanalyst.discovery import discover_all_files
+from mailanalyst.config import SUPPORTED_EXTENSIONS
+from mailanalyst.hashing import sha256_file
+from mailanalyst.cancellation import check_cancel, Cancelled
 
 
 OLE_SIGNATURE = bytes.fromhex("D0CF11E0A1B11AE1")
@@ -25,6 +28,7 @@ class PreflightResult:
     status: str
     reason: str
     include: bool
+    sha256: str = ""
 
 
 def _check_eml(path: Path) -> tuple[str, str]:
@@ -42,12 +46,16 @@ def _check_eml(path: Path) -> tuple[str, str]:
     return "ok", "EML-Header plausibel"
 
 
-def check_file(path: Path) -> PreflightResult:
+def check_file(path: Path, cancel=None) -> PreflightResult:
     try:
+        check_cancel(cancel)
         before = path.stat()
+        if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            return PreflightResult(str(path.resolve()), path.suffix.lower(), before.st_size,
+                                   before.st_mtime_ns, "ignored", "Nicht unterstuetztes Format", False)
         if before.st_size == 0:
             return PreflightResult(str(path.resolve()), path.suffix.lower(), 0, before.st_mtime_ns,
-                                   "error", "Datei ist leer", False)
+                                   "error", "Datei ist leer", False, sha256_file(path, cancel=cancel))
         with path.open("rb") as file:
             signature = file.read(8)
         extension = path.suffix.lower()
@@ -61,11 +69,14 @@ def check_file(path: Path) -> PreflightResult:
                 "error", "Ungueltige PST-Signatur")
         else:
             status, reason = "ignored", "Nicht unterstuetztes Format"
+        digest = sha256_file(path, cancel=cancel)
         after = path.stat()
         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
-            status, reason = "warning", "Datei wurde waehrend der Pruefung geaendert"
+            status, reason, digest = "error", "Datei wurde waehrend der Pruefung geaendert; erneut pruefen", ""
         return PreflightResult(str(path.resolve()), extension, after.st_size, after.st_mtime_ns,
-                               status, reason, status in {"ok", "warning"})
+                               status, reason, status in {"ok", "warning"}, digest)
+    except Cancelled:
+        raise
     except PermissionError:
         return PreflightResult(str(path.resolve()), path.suffix.lower(), 0, 0,
                                "error", "Datei ist nicht lesbar oder gesperrt", False)
@@ -74,11 +85,11 @@ def check_file(path: Path) -> PreflightResult:
                                "error", str(exc), False)
 
 
-def run_preflight(input_path: Path, progress=None) -> list[PreflightResult]:
-    files = discover_mail_files(input_path)
+def run_preflight(input_path: Path, progress=None, excluded=(), cancel=None) -> list[PreflightResult]:
+    files = discover_all_files(input_path, excluded)
     results = []
     for index, path in enumerate(files, start=1):
-        results.append(check_file(path))
+        results.append(check_file(path, cancel))
         if progress:
             progress(index, len(files), path)
     return results

@@ -1,6 +1,6 @@
 # MailAnalyst – Projektziele
 
-Stand: 5. September 2026
+Stand: 10. September 2026
 
 ## 1. Zweck und Verbindlichkeit
 
@@ -79,6 +79,18 @@ Für spätere KI-Recherche ist der Transfer des Ausgabeordners in eine separate,
 
 ## 6. Abgrenzungen und spätere Ausbaustufen
 
+### Reife vor dem Echtdaten-Pilot
+
+Festlegung vom 10. September 2026: Der Umzug in die geschützte Dev-Umgebung zum
+Testen von Echtdaten erfolgt erst nach einer produktionsnahen technischen Abnahme
+mit synthetischen Inhalten. Dazu gehören die zugesagten Importwege, Quellenschutz,
+nachvollziehbare Datenqualität, Fehler-/Abbruchverhalten und ein vollständig
+bedienter Windows-Build. Die spätere Praxisabnahme mit historischen Archiven bleibt
+für eine Betriebsfreigabe erforderlich. Die vorgeschlagene Versionsfolge und
+konkreten Abnahmekriterien stehen in der [Ausbauplanung](docs/01_guides/ROADMAP.md).
+Versionsnummern, Detailumfang und offene Hardware-/PST-Entscheidungen sind dort
+als Planung beziehungsweise Annahmen gekennzeichnet.
+
 ### Aktuell nicht vorgesehen
 
 - Outlook-Mac-Archive.
@@ -127,7 +139,7 @@ Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzu
 
 ## 9. Noch offene Festlegungen
 
-- Typische und maximale Archivgröße, Nachrichtenanzahl und Anzahl der Quellen pro Lauf.
+- Technische Referenzgröße: 50.000 Nachrichten; Skalierungstests mit 1.000 und 100.000 Nachrichten. Maximale Archivgröße in Bytes und Anzahl der Quellen pro Lauf bleiben offen.
 - Zielhardware, erlaubte Laufzeit und verfügbarer Arbeitsspeicher.
 - Ob der PST-Import ohne Outlook im ersten verteilten Paket zwingend enthalten sein muss.
 - Welche Anlageninhalte später benötigt werden: nur Inventar, auch Export, Volltextsuche oder weitere Verarbeitung.
@@ -135,4 +147,4 @@ Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzu
 - Welche Anforderungen an die Dokumentation von Belegen und die Reproduzierbarkeit verbindlich gelten sollen.
 - Welche spätere Analyseumgebung verwendet wird und wo die Grenze zwischen MailAnalyst und dieser Umgebung verläuft.
 
-Diese Punkte sind bewusst offen; sie wurden nicht durch Annahmen oder Empfehlungen als bereits vereinbart festgeschrieben.
+Abgesehen von der konkretisierten technischen Referenzgröße bleiben diese Punkte offen.

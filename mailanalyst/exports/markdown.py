@@ -7,6 +7,13 @@ from mailanalyst.text.links import prepare_analysis_text
 
 def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode: str = "full") -> None:
     """Schreibt chronologische Monatsdateien plus maschinenlesbaren Suchindex."""
+    from mailanalyst.record_store import RecordStore
+    if isinstance(dataframe, RecordStore):
+        from mailanalyst.exports.batch_markdown import write_dataset
+        from mailanalyst.progress import report
+        report(dataframe, "Exportieren", "Markdown-Monatsordner")
+        write_dataset(dataframe, output_dir, link_mode)
+        return
     output_dir.mkdir(parents=True, exist_ok=True)
     data = dataframe.copy()
     if "sent_at_utc" in data.columns:

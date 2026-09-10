@@ -1,5 +1,6 @@
 """Exercise the real Tk event loop with synthetic sources and isolated output."""
 
+import gc
 import json
 import tempfile
 import threading
@@ -17,6 +18,8 @@ from tests.samples import create_sources
 
 class GuiTests(unittest.TestCase):
     def setUp(self):
+        # Destroyed Tk interpreter cycles must be collected on the GUI thread.
+        gc.collect()
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -62,11 +65,17 @@ class GuiTests(unittest.TestCase):
         app.output_dir.set(str(target))
         app.preflight_step._start_preflight()
         self.wait_for(lambda: bool(app.preflight_results))
-        self.assertEqual(len(app.preflight_results), 2)
+        self.assertEqual(len(app.preflight_results), 3)
+        self.assertEqual(sum(row.status == "ignored" for row in app.preflight_results), 1)
+        ignored = next(i for i, row in enumerate(app.preflight_results) if row.status == "ignored")
+        app.preflight_step.preflight_table.selection_set(str(ignored))
+        app.preflight_step._toggle_preflight_item()
+        self.assertFalse(app.preflight_results[ignored].include)
         app.processing_step._start_processing()
         app.output_dir.set(str(self.root / "changed-after-start"))
         app.profile.set("CSV")
         self.wait_for(lambda: app.current_step == 4)
+        self.assertEqual(app.notebook.select(), str(app.result_tab))
         self.assertEqual(len(app.result_step.result_table.get_children()), 2)
         run = Path(app.result_output_path.get())
         self.assertEqual(run.parent, target.resolve() / "runs")
@@ -88,3 +97,54 @@ class GuiTests(unittest.TestCase):
                              lambda error: received.append((error, threading.get_ident())), lambda *args: None)
         self.wait_for(lambda: bool(received))
         self.assertEqual(received, [("synthetic failure", main_thread)])
+
+    def test_large_result_uses_bounded_preview_and_total_counts(self):
+        import pandas as pd
+        self.wait_for(lambda: bool(self.app.system_check_results))
+        frame = pd.DataFrame([{"subject": "synthetic", "parse_status": "ok"}] * 600)
+        frame.attrs.update(total_messages=50000, total_errors=3)
+        self.app.result_step.show_results(frame, 1, self.root)
+        self.assertEqual(len(self.app.result_step.result_table.get_children()), 500)
+        self.assertIn("50000 Nachrichten", self.app.result_step.result_status.get())
+        self.assertIn("3 Parserfehler", self.app.result_step.result_status.get())
+
+    def test_preflight_selection_is_keyboard_accessible(self):
+        from mailanalyst.checks.preflight import PreflightResult
+
+        step = self.app.preflight_step
+        row = PreflightResult("synthetic.eml", ".eml", 10, 0, "ok", "synthetic", True)
+        step._finish_preflight([row])
+        step.preflight_table.selection_set("0")
+        self.assertTrue(step.preflight_table.bind("<Return>"))
+        step._toggle_preflight_item()
+        self.assertFalse(row.include)
+        self.assertEqual(step.preflight_table.set("0", "include"), "Nein")
+
+    def test_core_columns_fit_and_details_dialog_has_parent(self):
+        system = self.app.system_step.system_table
+        preflight = self.app.preflight_step.preflight_table
+        result = self.app.result_step.result_table
+        self.assertGreaterEqual(system.column("check", "width"), 250)
+        self.assertGreaterEqual(preflight.column("include", "width"), 100)
+        core = ("sent_datetime_de", "from_email", "subject", "file_ext", "parse_status")
+        self.assertLessEqual(sum(result.column(name, "width") for name in core), 820)
+
+        result.insert("", "end", iid="0", values=("",) * len(result["columns"]))
+        result.selection_set("0")
+        self.app.result_step.page_rows = {"0": {"subject": "Test", "source_path": "synthetic.eml",
+                                                  "parse_status": "ok", "parse_error": ""}}
+        with patch("mailanalyst.gui.steps.result.messagebox.showinfo") as showinfo:
+            self.app.result_step._show_details()
+        self.assertIs(showinfo.call_args.kwargs["parent"], self.app)
+
+    def test_config_actions_fit_at_minimum_size_and_dialogs_have_parent(self):
+        self.app.geometry("980x640")
+        self.app.deiconify()
+        self.app.update_idletasks()
+        button = self.app.config_step.start_button
+        self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
+                             self.app.winfo_rooty() + self.app.winfo_height())
+
+        with patch("mailanalyst.gui.steps.config.filedialog.askdirectory", return_value="") as askdirectory:
+            self.app.config_step._choose_output()
+        self.assertIs(askdirectory.call_args.kwargs["parent"], self.app)

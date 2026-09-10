@@ -4,9 +4,9 @@ Stand: 6. September 2026. Dieses Dokument beschreibt die aktuelle Implementierun
 
 ## Datensätze und fehlende Werte
 
-Eine erfolgreich gelesene EML-/MSG-Datei erzeugt eine Nachrichtenzeile. Eine PST kann mehrere Zeilen aus Ordnern und Unterordnern erzeugen. Der gemeinsame Masterbestand ist ein Pandas-DataFrame aus den zurückgegebenen Dictionaries. Es gibt weder eine globale eindeutige Nachrichten-ID noch eine automatische Deduplizierung.
+Eine erfolgreich gelesene EML-/MSG-Datei erzeugt eine Nachrichtenzeile. Eine PST kann mehrere Zeilen aus Ordnern und Unterordnern erzeugen. CLI und GUI speichern den gemeinsamen Masterbestand als einzelne JSON-Nachrichtenzeilen in einer temporären SQLite-Datei. Es gibt weder eine globale eindeutige Nachrichten-ID noch eine automatische Deduplizierung.
 
-Die Typen unten beschreiben erwartete Python-Werte vor der Zusammenführung. Viele fehlende Textwerte sind `""`. Fehlende Felder einzelner Dictionaries können im DataFrame zu `NaN`/Null und geänderten Spaltentypen führen. Besonders Fehlerzeilen aus PST-Importern enthalten nur einen Teil der Felder. Ein leerer Quellenbestand kann einen DataFrame ohne Spalten erzeugen; Die Laufpakete unterstützen leere Ergebnisse einschließlich eines leeren Markdown-Index.
+Die Typen unten beschreiben erwartete Python-Werte. Viele fehlende Textwerte sind `""`. Nicht vorhandene Felder werden beim Export als Null ergänzt; Spalten entsprechen der Vereinigung aller Nachrichtenfelder. Besonders Fehlerzeilen aus PST-Importern enthalten nur einen Teil der Felder. Ein leerer Quellenbestand kann ohne Spalten bleiben; die Laufpakete unterstützen leere Ergebnisse einschließlich eines leeren Markdown-Index.
 
 ## Herkunft und Dateimerkmale
 
@@ -46,7 +46,7 @@ MSG und beide PST-Importer lassen `reply_to` und `reply_to_emails` derzeit leer.
 
 Aktuelle Unterschiede:
 
-- EML und MSG verwenden den gemeinsamen Datumsparser. Werte ohne Zeitzone werden dort als UTC interpretiert. MSG übergibt den Bibliothekswert als Text; nicht jede mögliche Darstellung ist damit zuverlässig abgedeckt.
+- EML und textuelle MSG-Datumswerte verwenden den gemeinsamen Datumsparser. MSG übernimmt `datetime`-Werte der Bibliothek direkt und normalisiert sie auf UTC. Werte ohne Zeitzone werden bei beiden Wegen als UTC interpretiert. Fehlende MSG-Daten bleiben leer. Reale synthetische MSG-Dateien sichern Monatswechsel und beide Zeitumstellungen ab.
 - Outlook-PST interpretiert naive `datetime`-Werte als die gewählte Zeitzone, standardmäßig `Europe/Berlin`.
 - libpff-PST interpretiert naive `datetime`-Werte als UTC. Als Datumsquelle wird `client_submit_time`, ersatzweise bei fehlgeschlagenem Attributzugriff `delivery_time`, herangezogen.
 - Eine gleichwertige Normalisierung aller Importformate ist deshalb noch nicht garantiert.
@@ -92,25 +92,44 @@ Der Dispatcher erzeugt bei abgefangenen Quellenfehlern eine Zeile mit Herkunftsb
 
 Vorprüfungsstatus (`ok`, `warning`, `error`, `ignored`) sind davon getrennt und stehen in den Vorprüfungsberichten. Sie sind keine Werte von `parse_status`.
 
+Vorprüfungszeilen enthalten zusätzlich `sha256` für lesbare unterstützte Dateien.
+Ignorierte oder nicht prüfbare Dateien haben keinen verwendbaren Fingerabdruck.
+Größe, Nanosekunden-Änderungszeit und Hash werden für ausgewählte Dateien direkt
+vor dem Lesen gegen den Vorprüfungsstand geprüft. Fehler während dieser Bindung
+brechen den Lauf ab. Vorprüfungsergebnisse sind Fingerabdrücke, keine Quellkopien.
+
 ## Cache und Nachweisgrenzen
 
-Der interne Cache ist SQLite mit einer versionierten Tabelle aus Quellpfad und JSON-Daten (Speicherformatversion 1). JSON-Einträge werden auf Struktur, skalare Nachrichtendaten und Übereinstimmung mit Quellkriterien geprüft. `cache_schema_version` in den Exportzeilen bleibt 6; die getrennte Parserrevision ist derzeit 1. Die Validierung ist keine vollständige fachliche Schemavalidierung aller Nachrichtenfelder (DATA-07).
+Der primäre interne Cache ist SQLite mit getrennten Tabellen für Quellenkriterien/Audits und einzelne JSON-Nachrichten (Speicherformatversion 2). Speicherformat 1 wird beim ersten CLI-/GUI-Lauf neu aufgebaut. JSON-Einträge werden auf Struktur, skalare Nachrichtendaten und Übereinstimmung mit Quellkriterien geprüft. `cache_schema_version` in den Exportzeilen bleibt 6; die getrennte Parserrevision ist seit der MSG-Datumskorrektur vom 10. September 2026 auf 2 erhöht. Ältere Parserrevisionen werden neu importiert, damit zuvor verlorene MSG-Versanddaten wiederhergestellt werden. Die Validierung ist keine vollständige fachliche Schemavalidierung aller Nachrichtenfelder (DATA-07).
 
 GUI: `<Zielordner>/.mailanalyst_cache/mail_metadata.sqlite3`; CLI: relativ zum Arbeitsordner oder explizit über `--cache`. Bei `.pkl`-/`.pickle`-Pfaden wird eine gleichnamige `.sqlite3`-Datei verwendet. Alte Pickles werden weder geladen noch verändert. Beschädigte beziehungsweise inkompatible Caches werden mit Warnung neu aufgebaut. Eine neue Cachedatei ersetzt die alte erst nach erfolgreichem Abschluss der Quellverarbeitung. Fehlerhafte Quellen werden nicht als Cachetreffer wiederverwendet; leere erfolgreich gelesene Archive können gespeichert werden. Der Cache enthält weiterhin die Quellen des letzten Laufs, keine dauerhafte Archivdatenbank.
 
 Cachekriterien sind Quellpfad, Größe, Änderungszeit, Schema-/Parserrevision, Zielzeitzone und tatsächlich gewähltes PST-Backend (auch bei `auto`). Mit `--hash-check` muss zusätzlich der aktuelle SHA-256 übereinstimmen. Neue Importe werden vor und nach dem Parsen vollständig gehasht; strenge Cachetreffer ebenfalls vor und nach der Übernahme. Unterschiedliche Signaturen brechen den Lauf ab, ohne den bisherigen Cache zu ersetzen.
 
-Das Manifest enthält pro Quelle Hash, Größe, Änderungszeit, Backend, Nachrichten-/Fehlerzahl und `mode` (`parsed`/`cache`). `hash_status=verified_this_run` und `hash_verified_at` bezeichnen die aktuelle Prüfung. Bei schnellen Cachetreffern steht `reused_unverified` mit leerem Verifikationszeitpunkt; `file_sha256` bleibt der frühere Hash. Die Nachrichtenexporte erhalten keine zusätzlichen Auditspalten.
+GUI-/CLI-Läufe verwenden unabhängig von der kompatiblen `hash_check`-Option die
+Pflichtbindung `preflight_binding=sha256` und dadurch stets aktuell geprüfte
+Cachetreffer. Der schnelle ungeprüfte Modus bleibt nur für direkte Kernaufrufe
+ohne Vorprüfungsbindung verfügbar. Die GUI kopiert die Auswahl samt Fingerabdrücken
+in den Auftrag; direkte Service-Aufrufe ohne übergebene Vorprüfung und die CLI
+prüfen zunächst die ausgewählten Dateien neu.
+
+Das Manifest verweist über `sources_file` auf `sources.jsonl`. Diese Datei enthält pro Quelle Hash, Größe, Änderungszeit, Backend, Nachrichten-/Fehlerzahl und `mode` (`parsed`/`cache`). `hash_status=verified_this_run` und `hash_verified_at` bezeichnen die aktuelle Prüfung. Bei schnellen Cachetreffern steht `reused_unverified` mit leerem Verifikationszeitpunkt; `file_sha256` bleibt der frühere Hash. Die Nachrichtenexporte erhalten keine zusätzlichen Auditspalten.
 
 Diese Vorher-/Nachher-Prüfung ist keine Dateisperre oder unveränderliche Quellkopie. Kurzzeitige Änderungen mit vollständiger Wiederherstellung sowie Änderungen nach der Prüfung sind nicht ausgeschlossen. Für PST gilt der Hash dem gesamten Archiv. Outlook-bedingte Archivänderungen können deshalb einen Lauf ablehnen; echte PST-Workflows sind weiterhin praktisch zu prüfen.
 
 ## Laufpakete und Veröffentlichung
 
-GUI und CLI erzeugen `<Zielbereich>/runs/<UTC-Zeit>-<UUID>/`. `manifest.json` enthält Optionen, Versionen, Quellenprüfung, Zähler, UTC-Start/Ende sowie relative Exportpfade mit Größe und SHA-256. Status: `running`, `completed`, `completed_with_errors` (Parserfehlerzeilen), `cancelled` (kooperativer GUI-Abbruch vor Veröffentlichung) oder `failed`. Nach Prozessabbruch verbleibendes `running` bedeutet unvollständig; es gibt keine automatische Wiederaufnahme.
+GUI und CLI erzeugen `<Zielbereich>/runs/<UTC-Zeit>-<UUID>/`. `manifest.json` (Version 2 für CLI/GUI) enthält Optionen, Versionen, den Verweis auf die Quellenprüfung, Zähler, Batchkennzahlen, UTC-Start/Ende sowie relative Exportpfade mit Größe und SHA-256. Status: `running`, `completed`, `completed_with_errors` (Parserfehlerzeilen), `cancelled` (kooperativer GUI-Abbruch vor Veröffentlichung) oder `failed`. Nach Prozessabbruch verbleibendes `running` bedeutet unvollständig; es gibt keine automatische Wiederaufnahme.
 
-Ausgaben entstehen unter `.pending/`. Strukturierte Einzelexporte werden zurückgelesen und auf Nachrichtenanzahl geprüft; Markdown-Einzeldateien auf Kopf/Anzahl, Monatsindizes auf Anzahl, sichere relative Dateipfade und vorhandene Anker. Erst danach wird das Paketverzeichnis nach `exports/` umbenannt und der Abschluss im Manifest gespeichert. Das Manifest ist das maßgebliche Abschlusssignal. Logs und GUI-Optionen liegen im Laufordner; Vorprüfungs-/Systemberichte bleiben vorläufig im gewählten Zielbereich und sind keine an den Lauf gebundenen Quelldatensnapshots (CHECK-01 offen).
+Ausgaben entstehen unter `.pending/`. Strukturierte Einzelexporte werden zurückgelesen und auf Nachrichtenanzahl geprüft; Markdown-Einzeldateien auf Kopf/Anzahl, Monatsindizes auf Anzahl, sichere relative Dateipfade und vorhandene Anker. Erst danach wird das Paketverzeichnis nach `exports/` umbenannt und der Abschluss im Manifest gespeichert. Das Manifest ist das maßgebliche Abschlusssignal. Logs, GUI-Optionen und eine Kopie der Vorprüfung sowie auftragsbezogene Systemberichte liegen im Laufordner. Die ursprünglichen GUI-Berichte im Zielbereich bleiben vorläufig. Die laufbezogene Vorprüfung beschreibt die tatsächliche Auswahl, ist aber keine unveränderliche Kopie der Originaldateien.
 
-Die GUI prüft Abbruchanforderungen bei Quellen-/Hasharbeit, vor dem Cacheersatz und zwischen Exporten. Laufende Parser-/Bibliotheksaufrufe sowie ein einzelner Export werden nicht gewaltsam unterbrochen. Vor der Paketveröffentlichung entscheidet eine synchronisierte Grenze: Eine bereits angeforderte Stornierung gewinnt und erzeugt `cancelled`; eine danach eingehende Anforderung wartet auf den regulären Abschluss. Der Cache kann bereits vor einem späteren Exportabbruch erfolgreich aktualisiert worden sein. Er ist unabhängig vom Abschlussstatus des Laufpakets wiederverwendbar.
+Das additive Manifestfeld `application` nennt die zentrale App-Version und den
+Buildstatus. Gebaute EXEs ergänzen Buildzeit, Python-/Paketversionen, Quellrevision,
+Änderungsstatus und Quellbaum-Hash aus der eingebetteten `build_info.json`.
+Entwicklungsaufrufe melden `development`; sie behaupten keine festgeschriebene
+Quellrevision. App-Versionen sind unabhängig von Cache- und Parserrevisionen.
+
+Die GUI prüft Abbruchanforderungen bei Quellen-/Hasharbeit, vor dem Cacheersatz und zwischen Exporten. Nachrichten-/Exportschleifen und Validierung prüfen das Signal ebenfalls; laufende Parser-/Bibliotheksaufrufe werden nicht gewaltsam unterbrochen. Vor der Paketveröffentlichung entscheidet eine synchronisierte Grenze: Eine bereits angeforderte Stornierung gewinnt und erzeugt `cancelled`; eine danach eingehende Anforderung wartet auf den regulären Abschluss. Der Cache kann bereits vor einem späteren Exportabbruch erfolgreich aktualisiert worden sein. Er ist unabhängig vom Abschlussstatus des Laufpakets wiederverwendbar.
 
 Explizite CLI-Ausgabepfade bleiben zusätzliche Kompatibilitätskopien nach Paketvalidierung. Einzeldateien werden per temporärer Datei ersetzt; vorhandene Markdown-Verzeichnisse werden unter `.previous-<UUID>` im selben Elternordner erhalten und durch eine neue Kopie ersetzt. Mehrere solche Zielpfade bilden keine gemeinsame atomare Transaktion. Bei Fehlern ist das Manifest maßgeblich; frühere Laufpakete bleiben unverändert. Es wird keine Stromausfall-Dauerhaftigkeit oder manipulationssichere Signatur zugesichert.
 
@@ -118,10 +137,10 @@ Explizite CLI-Ausgabepfade bleiben zusätzliche Kompatibilitätskopien nach Pake
 
 | Ausgabe | Aktuelles Verhalten |
 | --- | --- |
-| Parquet | Vollständige DataFrame-Spalten mit von Pandas/PyArrow abgeleiteten Typen. |
-| JSON | Array von Records, Unicode erhalten, fehlende DataFrame-Werte können `null` werden. |
+| Parquet | Alle Spalten in begrenzten Rowgroups. Ein global ermitteltes Schema bleibt über alle Batches gleich: reine Ganzzahlen → int64, Boolean → bool, Zahlmischungen → float64, übrige Spalten → Text. Gemischte Ganzzahl/Leertext-Datumsfelder werden als Text gespeichert; Null bleibt Null. |
+| JSON | Inkrementelles Array von Records, Unicode und skalare Python-Typen erhalten, fehlende Felder `null`. |
 | CSV | Alle übergebenen Spalten, UTF-8 mit BOM; Typinformationen gehen verloren. Formelverdächtige Zeichenfolgen erhalten ein führendes Apostroph ausschließlich in dieser Sichtausgabe. |
-| Excel | Alle übergebenen Spalten; Zeichenfolgen werden auf 32.767 Zeichen gekürzt und ausdrücklich als Textzellen gespeichert, ohne Formeln oder automatische Hyperlinks. CR kann beim XLSX-Rücklesen als LF erscheinen. Sichtformat, kein verlustfreies Masterformat. |
+| Excel | Streaming im Write-only-Modus; mehr als 1.048.575 Nachrichten werden mit Hinweis auf JSON/Parquet abgelehnt. Alle übergebenen Spalten; Zeichenfolgen werden auf 32.767 Zeichen gekürzt und ausdrücklich als Textzellen gespeichert, ohne Formeln oder automatische Hyperlinks. CR kann beim XLSX-Rücklesen als LF erscheinen. Sichtformat, kein verlustfreies Masterformat. |
 | XML | Wurzel `emails` mit `count`, darunter `email` und Elemente je Spalte; Werte als Text, fehlende Werte leer. Die aktuelle Filterung entfernt auch Zeichen außerhalb der BMP. |
 | Markdown | Lesbare Auswahl von Metadaten und bereinigtem Text, keine vollständige oder verlustfreie Repräsentation. |
 
@@ -132,6 +151,16 @@ Die reduzierte Listenansicht benennt ausgewählte Spalten auf Deutsch um und ver
 Die Markdown-Linkmodi `full`, `compact` und `text_only` betreffen nur die Markdown-Bodydarstellung. Sie verändern weder Parquet/JSON noch automatisch alle Indexfelder. Beispielsweise bleibt `body_preview` im Index unverändert und kann weiterhin URLs enthalten.
 
 Der Monatsindex (`index.csv` und `index.jsonl`) enthält `chunk`, `markdown_file`, `anchor`, `sent_at_utc`, `sent_datetime_de`, `from_email`, `to_emails`, `cc_emails`, `subject`, `message_id`, `attachment_names`, `source_path` und `body_preview`. `markdown_file` ist relativ zum Markdown-Ausgabeordner und verwendet portable `/`-Pfadtrenner. `anchor` ist eine laufende Nummer innerhalb eines Monats und kann sich bei neuen Läufen ändern. Unbekannte Datumswerte werden unter `unbekannt` gruppiert.
+
+## Batchverarbeitung und Grenzen
+
+Standard sind 500 Nachrichten pro Batch; die CLI erlaubt `--batch-size 1..5000`. Zusätzlich beendet ein Textvolumen von etwa 8 MiB einen Batch. Eine einzelne größere Nachricht kann diese Schwelle überschreiten. EML/MSG werden mit höchstens zweimal der Workerzahl gleichzeitig eingeplanten Quellen gelesen; PST-Iteratoren liefern einzelne Nachrichten und werden bei Abbruch geschlossen. Bereits gelesene PST-Nachrichten bleiben bei einem späteren abgefangenen Quellenfehler zusammen mit einer Fehlerzeile erhalten; die Quelle wird nicht als Cachetreffer wiederverwendet.
+
+JSON, CSV, XML und Excel werden zeilenweise geschrieben, Parquet in Rowgroups. Markdown-Monate werden über SQLite sortiert und direkt mit ihren Indizes geschrieben. Die Validierung liest die Formate inkrementell zurück; Markdown-Einzelexporte werden nur anhand ihres Kopfes geprüft. `work.sqlite3` ist das interne Arbeitsartefakt im Laufordner; nach einem regulären Service-/CLI-Abschluss wird es geschlossen und entfernt. Nach frühem Fehler oder Prozessabbruch kann es zur Diagnose zurückbleiben, ohne Wiederaufnahmefunktion.
+
+Der GUI-Service liefert nur eine Vorschau von höchstens 500 Nachrichten und etwa 8 MiB serialisierten Quelldaten, gegebenenfalls zuzüglich einer großen Einzelzeile. `total_messages`, `total_errors` und `run_directory` stehen in DataFrame-Attributen. Die vollständigen Daten liegen in den Exporten. GUI-Läufe enthalten zusätzlich `exports/review.sqlite3` mit einer Tabelle `review` (`seq`, `status`, `payload`) und einem Statusindex. Das JSON-Payload enthält als Text `sent_datetime_de`, `from_email`, `subject`, `file_ext`, `parse_status`, `parse_error` und `source_path`; fehlende Werte erscheinen leer. Es enthält keine Mailtexte, aber vertrauliche Metadaten und vollständige Fehler-/Herkunftsbezüge. Die laufende `seq` gilt nur innerhalb dieses Laufs, nicht als dauerhafte Nachrichten-ID. Der Index gehört zu den gehashten Exportdateien. Seiten und Fehlerfilter lesen jeweils höchstens 500 Einträge; ein fehlender Index erlaubt nur die bereits übergebene Vorschau. Quellpfadlisten, Vorprüfungsdaten, Ordnerrekursion sowie der Speicher einer einzelnen Nachricht beziehungsweise Importbibliothek sind weiterhin größenabhängig; dies ist keine feste Gesamt-RAM-Garantie.
+
+`pipeline.build_dataframe`, die Listen-Parserhelfer und DataFrame-Exporter bleiben als materialisierende Kompatibilität für kleine direkte Python-Aufrufe erhalten. Sie sind nicht der skalierbare CLI-/GUI-Pfad und verwenden weiterhin die bisherige DataFrame-Typableitung beziehungsweise Cacheversion 1.
 
 ## Änderungen an diesem Modell
 
