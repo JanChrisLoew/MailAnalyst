@@ -22,8 +22,10 @@ if ($LASTEXITCODE -ne 0) { throw "Buildmetadaten fehlgeschlagen" }
     --paths $ProjectDir `
     --collect-all extract_msg `
     --collect-all pyarrow `
+    --hidden-import pypff `
     --hidden-import win32timezone `
     --add-data "$ProjectDir\assets\fonts;assets\fonts" `
+    --add-data "$ProjectDir\.venv\Lib\site-packages\libpff_python_windows-20231205.dist-info\licenses;licenses\libpff" `
     --add-data "$BuildInfo;." `
     (Join-Path $ProjectDir "mail_analyst_gui.py")
 

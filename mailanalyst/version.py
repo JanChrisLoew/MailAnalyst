@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 
-APP_VERSION = "0.5.0-dev.1"
+APP_VERSION = "0.7.0-dev.1"
 
 
 def build_info():

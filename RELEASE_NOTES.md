@@ -1,4 +1,4 @@
-# MailAnalyst 0.5.0-dev.1
+# MailAnalyst 0.7.0-dev.1
 
 Entwicklungskandidat, keine Freigabe fuer Echtdaten oder produktiven Betrieb.
 
@@ -8,8 +8,12 @@ Entwicklungskandidat, keine Freigabe fuer Echtdaten oder produktiven Betrieb.
 - Vollstaendige GUI-Dateiinventarisierung einschliesslich ignorierter Dateien.
 - Ausgewaehlte Quellen werden beim Import gegen die SHA-256-Vorpruefung gebunden.
 - Auftragsbezogene Komponenten- und Schreib-/Speicherpruefung in GUI und CLI.
+- PST-Import ohne Outlook ueber das mitgelieferte `libpff-python-windows 20231205`.
+  Die LGPLv3+-Lizenztexte liegen unter `_internal/licenses/libpff/`.
 
-Bekannte Grenzen: Kein abgenommener echter PST-Importweg, keine Wiederaufnahme
+Bekannte Grenzen: Der libpff-PST-Weg besitzt bisher nur eine kleine oeffentliche
+Referenzdateipruefung; Outlook und selbst erzeugte PST-Sollarchive sind offen.
+Keine Wiederaufnahme
 nach Prozessabbruch, keine Gesamt-RAM-/Laufzeitgarantie. Die Platzabschaetzung ist
 eine Warnschwelle und keine Garantie. Outlook-Registrierung beweist keine
 erreichbare COM-Sitzung. Originalschutz ohne unveraenderlichen Quellsnapshot

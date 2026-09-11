@@ -1,6 +1,6 @@
 # MailAnalyst – Projektziele
 
-Stand: 10. September 2026
+Stand: 11. September 2026
 
 ## 1. Zweck und Verbindlichkeit
 
@@ -141,10 +141,12 @@ Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzu
 
 - Technische Referenzgröße: 50.000 Nachrichten; Skalierungstests mit 1.000 und 100.000 Nachrichten. Maximale Archivgröße in Bytes und Anzahl der Quellen pro Lauf bleiben offen.
 - Zielhardware, erlaubte Laufzeit und verfügbarer Arbeitsspeicher.
-- Ob der PST-Import ohne Outlook im ersten verteilten Paket zwingend enthalten sein muss.
+- Festlegung vom 11. September 2026: Der erste Pilot-Build soll PST-Dateien auch
+  ohne Outlook über einen mitgelieferten, geprüften libpff-Weg lesen können.
 - Welche Anlageninhalte später benötigt werden: nur Inventar, auch Export, Volltextsuche oder weitere Verarbeitung.
 - Welche konkreten Recherchefragen und erwarteten Treffer als fachliche Abnahme dienen.
 - Welche Anforderungen an die Dokumentation von Belegen und die Reproduzierbarkeit verbindlich gelten sollen.
 - Welche spätere Analyseumgebung verwendet wird und wo die Grenze zwischen MailAnalyst und dieser Umgebung verläuft.
 
-Abgesehen von der konkretisierten technischen Referenzgröße bleiben diese Punkte offen.
+Abgesehen von der Referenzgröße und dem verbindlichen libpff-Pilotweg bleiben
+diese Punkte offen.
