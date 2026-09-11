@@ -87,9 +87,12 @@ class BatchTests(unittest.TestCase):
         store = RecordStore(self.root / "records.sqlite3")
         self.addCleanup(store.close)
         store.batch_size = 37
-        store.append("synthetic", ({"sent_year": 2026 if i < 1000 else "", "subject": f"={i}",
+        store.append("synthetic", ({"source_path": f"synthetic::{i}", "source_file_path": "synthetic",
+                                    "sent_year": 2026 if i < 1000 else "", "subject": f"={i}",
                                     "body_text_clean": "synthetic " * 10,
-                                    "parse_status": "error" if i == 1000 else "ok"} for i in range(1001)))
+                                    "parse_status": "error" if i == 1000 else "ok",
+                                    "parse_error": "synthetic error" if i == 1000 else ""}
+                                   for i in range(1001)))
         self.assertEqual(store.max_batch_rows, 37)
         preview = store.preview()
         self.assertEqual(len(preview), 500)
@@ -124,16 +127,21 @@ class BatchTests(unittest.TestCase):
         store = RecordStore(self.root / "view.sqlite3")
         self.addCleanup(store.close)
         text = "=HYPERLINK(\"https://example.test\")"
-        store.append("synthetic", [{"subject": text, "number": -7}])
+        store.append("synthetic", [{"source_path": "synthetic::1", "source_file_path": "synthetic",
+                                    "parse_status": "ok", "subject": text, "number": -7}])
         write_output(store, self.root / "view.csv")
         with (self.root / "view.csv").open(encoding="utf-8-sig", newline="") as file:
             row = list(csv.DictReader(file))[0]
-        self.assertEqual(row, {"subject": "'" + text, "number": "-7"})
+        self.assertEqual(row["subject"], "'" + text)
+        self.assertEqual(row["number"], "-7")
         write_output(store, self.root / "view.xlsx")
         book = load_workbook(self.root / "view.xlsx")
         try:
-            self.assertEqual(book.active["A2"].value, text)
-            self.assertEqual(book.active["A2"].data_type, "s")
-            self.assertEqual(book.active["B2"].value, -7)
+            headings = [cell.value for cell in book.active[1]]
+            subject = headings.index("subject") + 1
+            number = headings.index("number") + 1
+            self.assertEqual(book.active.cell(2, subject).value, text)
+            self.assertEqual(book.active.cell(2, subject).data_type, "s")
+            self.assertEqual(book.active.cell(2, number).value, -7)
         finally:
             book.close()

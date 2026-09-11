@@ -22,5 +22,6 @@ def write_xml(dataframe: pd.DataFrame, output_path: Path) -> None:
         for column, value in row.items():
             node = ET.SubElement(email_node, str(column))
             if not pd.isna(value):
-                node.text = re.sub(r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]", "", str(value))
+                node.text = re.sub(
+                    r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]", "", str(value))
     ET.ElementTree(root).write(output_path, encoding="utf-8", xml_declaration=True)

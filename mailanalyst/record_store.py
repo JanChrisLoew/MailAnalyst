@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from mailanalyst.cancellation import check_cancel
+from mailanalyst.message_schema import assess_message
 
 BATCH_SIZE = 500
 BATCH_BYTES = 8 * 1024 * 1024
@@ -26,12 +27,15 @@ class RecordStore:
             CREATE TABLE sources (source TEXT PRIMARY KEY, payload TEXT NOT NULL);
             CREATE TABLE messages (seq INTEGER PRIMARY KEY, source TEXT, payload TEXT,
                                    sent TEXT, chunk TEXT, subject TEXT);
+            CREATE TABLE quality_warnings (seq INTEGER, source_path TEXT, payload TEXT);
             CREATE INDEX source_rows ON messages(source, seq);
         """)
         self.columns = {}
         self.count = 0
         self.source_count = 0
         self.errors = 0
+        self.warning_count = 0
+        self.warning_messages = 0
         self.cancel = cancel
         self.batch_size = BATCH_SIZE
         self.max_batch_rows = 0
@@ -42,9 +46,10 @@ class RecordStore:
         return self.count
 
     def append(self, source, rows):
-        buffer, size = [], 0
+        buffer, warning_buffer, size = [], [], 0
         for row in rows:
             check_cancel(self.cancel)
+            warnings = assess_message(row)
             payload = json.dumps(row, ensure_ascii=False, allow_nan=False)
             for key, value in row.items():
                 self.columns.setdefault(key, set())
@@ -57,18 +62,24 @@ class RecordStore:
             except (ValueError, TypeError):
                 date, chunk = None, "unbekannt"
             buffer.append((source, payload, date, chunk, str(row.get("subject", "") or "")))
+            seq = self.count + 1
+            warning_buffer.extend((seq, row["source_path"], json.dumps(item, ensure_ascii=False))
+                                  for item in warnings)
             size += len(payload.encode("utf-8"))
             self.count += 1
             self.errors += row.get("parse_status") == "error"
+            self.warning_count += len(warnings)
+            self.warning_messages += bool(warnings)
             if len(buffer) >= self.batch_size or size >= BATCH_BYTES:
-                self._flush(buffer, size)
-                buffer, size = [], 0
-        self._flush(buffer, size)
+                self._flush(buffer, warning_buffer, size)
+                buffer, warning_buffer, size = [], [], 0
+        self._flush(buffer, warning_buffer, size)
 
-    def _flush(self, buffer, size):
+    def _flush(self, buffer, warnings, size):
         self.max_batch_rows = max(self.max_batch_rows, len(buffer))
         self.max_batch_bytes = max(self.max_batch_bytes, size)
         self.db.executemany("INSERT INTO messages(source,payload,sent,chunk,subject) VALUES (?,?,?,?,?)", buffer)
+        self.db.executemany("INSERT INTO quality_warnings VALUES (?,?,?)", warnings)
         if buffer and self.on_flush:
             self.on_flush()
 
@@ -110,6 +121,11 @@ class RecordStore:
     def audits(self):
         for (payload,) in self.db.execute("SELECT payload FROM sources ORDER BY rowid"):
             yield json.loads(payload)["audit"]
+
+    def quality_warnings(self):
+        for seq, source_path, payload in self.db.execute(
+                "SELECT seq,source_path,payload FROM quality_warnings ORDER BY seq,rowid"):
+            yield {"message_number": seq, "source_path": source_path, **json.loads(payload)}
 
     def preview(self, limit=500):
         rows, size = [], 0

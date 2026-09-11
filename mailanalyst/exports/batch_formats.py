@@ -78,7 +78,8 @@ def write_xml(store, path):
         for row in store.records():
             file.write("<email>")
             for key, value in row.items():
-                text = "" if value is None else re.sub(r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]", "", str(value))
+                text = "" if value is None else re.sub(
+                    r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]", "", str(value))
                 file.write(f"<{key}>{escape(text)}</{key}>")
             file.write("</email>")
         file.write("</emails>")

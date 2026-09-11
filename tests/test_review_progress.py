@@ -19,7 +19,8 @@ class ReviewProgressTests(unittest.TestCase):
             root = Path(temporary)
             store = RecordStore(root / "work.sqlite3")
             try:
-                store.append("synthetic", ({"subject": str(i), "body_text": "private body",
+                store.append("synthetic", ({"source_file_path": "synthetic",
+                                           "subject": str(i), "body_text": "private body",
                                            "source_path": f"synthetic::{i}", "parse_status": "error" if i == 999 else "ok",
                                            "parse_error": "synthetic error" if i == 999 else ""} for i in range(1001)))
                 write_review(store, root / "review.sqlite3")

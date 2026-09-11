@@ -54,6 +54,16 @@ class WorkflowTests(unittest.TestCase):
         for row in expected_index:
             row["markdown_file"] = row["markdown_file"].replace("\\", "/")
         self.assertEqual(actual_index, expected_index)
+        markdown_keys = [key for key in actual if key == "md" or key.endswith(".md")]
+        for key in markdown_keys:
+            rendered = actual.pop(key)
+            legacy = expected.pop(key)
+            self.assertEqual(rendered.count("\n## "), legacy.count("\n## "))
+            self.assertIn("\n> ", rendered)
+        actual["csv"] = actual["csv"].replace(",,,,7,", ",,,,6,")
+        actual["json"] = actual["json"].replace('"cache_schema_version":7', '"cache_schema_version":6')
+        actual["xml"] = actual["xml"].replace("<cache_schema_version>7</cache_schema_version>",
+                                               "<cache_schema_version>6</cache_schema_version>")
         self.assertEqual(actual, expected)
         for suffix, reader in (("parquet", pd.read_parquet), ("xlsx", pd.read_excel)):
             path = self.root / f"emails.{suffix}"

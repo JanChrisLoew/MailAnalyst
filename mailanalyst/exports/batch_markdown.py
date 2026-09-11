@@ -5,13 +5,14 @@ import json
 
 from mailanalyst.text.cells import csv_text
 from mailanalyst.text.links import prepare_analysis_text
+from mailanalyst.exports.markdown_safety import inline_text, quoted_body
 
 INDEX_FIELDS = ("chunk", "markdown_file", "anchor", "sent_at_utc", "sent_datetime_de", "from_email",
                 "to_emails", "cc_emails", "subject", "message_id", "attachment_names", "source_path", "body_preview")
 
 
 def write_message(file, row, number, mode, anchor=None):
-    subject = str(row.get("subject") or "(ohne Betreff)").replace("\n", " ")
+    subject = inline_text(row.get("subject"), "(ohne Betreff)")
     if anchor:
         file.write(f'<a id="{anchor}"></a>\n\n')
     file.write(f"## {number}. {subject}\n\n")
@@ -23,12 +24,12 @@ def write_message(file, row, number, mode, anchor=None):
         fields.append(("PST-Ordner", "outlook_folder"))
     fields.append(("Quelle", "source_path"))
     for label, column in fields:
-        value = str(row.get(column) or "").replace("\n", " ")
+        value = inline_text(row.get(column))
         if value:
             file.write(f"- **{label}:** {value}\n")
     file.write("\n### Inhalt\n\n")
     body = prepare_analysis_text(str(row.get("body_text_clean") or ""), mode)
-    file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
+    file.write(quoted_body(body) + "\n\n---\n\n")
 
 
 def write_single(store, path, mode):

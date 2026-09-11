@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from mailanalyst.exports.tabular import write_csv
 from mailanalyst.text.links import prepare_analysis_text
+from mailanalyst.exports.markdown_safety import inline_text, quoted_body
 
 
 def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode: str = "full") -> None:
@@ -34,7 +35,7 @@ def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode:
             file.write(f"# E-Mails {chunk}\n\n{len(group)} Nachrichten\n\n")
             for number, (_, row) in enumerate(group.iterrows(), start=1):
                 anchor = f"mail-{number:05d}"
-                subject = str(row.get("subject", "") or "(ohne Betreff)").replace("\n", " ")
+                subject = inline_text(row.get("subject", ""), "(ohne Betreff)")
                 file.write(f"<a id=\"{anchor}\"></a>\n\n## {number}. {subject}\n\n")
                 metadata = (
                     ("Datum", "sent_datetime_de"), ("Von", "from_email"), ("An", "to_emails"),
@@ -42,12 +43,12 @@ def write_markdown_dataset(dataframe: pd.DataFrame, output_dir: Path, link_mode:
                     ("PST-Ordner", "outlook_folder"), ("Quelle", "source_path"),
                 )
                 for label, column in metadata:
-                    value = str(row.get(column, "") or "").replace("\n", " ")
+                    value = inline_text(row.get(column, ""))
                     if value and value.lower() != "nan":
                         file.write(f"- **{label}:** {value}\n")
                 file.write("\n### Inhalt\n\n")
                 body = prepare_analysis_text(str(row.get("body_text_clean", "") or ""), link_mode)
-                file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
+                file.write(quoted_body(body) + "\n\n---\n\n")
                 index_rows.append({
                     "chunk": chunk,
                     "markdown_file": chunk_path.relative_to(output_dir).as_posix(),
@@ -73,14 +74,14 @@ def write_markdown(dataframe: pd.DataFrame, output_path: Path, markdown_link_mod
     with output_path.open("w", encoding="utf-8", newline="\n") as file:
         file.write(f"# MailAnalyst Export\n\n{len(dataframe)} Nachrichten\n\n")
         for number, (_, row) in enumerate(dataframe.iterrows(), start=1):
-            subject = str(row.get("subject", "") or "(ohne Betreff)").replace("\n", " ")
+            subject = inline_text(row.get("subject", ""), "(ohne Betreff)")
             file.write(f"## {number}. {subject}\n\n")
             for label, column in (("Datum", "sent_datetime_de"), ("Von", "from_email"),
                                   ("An", "to_emails"), ("CC", "cc_emails"),
                                   ("Anlagen", "attachment_names"), ("Quelle", "source_path")):
-                value = str(row.get(column, "") or "").replace("\n", " ")
+                value = inline_text(row.get(column, ""))
                 if value:
                     file.write(f"- **{label}:** {value}\n")
             file.write("\n### Inhalt\n\n")
             body = prepare_analysis_text(str(row.get("body_text_clean", "") or ""), markdown_link_mode)
-            file.write(body.replace("\n#", "\n\\#") + "\n\n---\n\n")
+            file.write(quoted_body(body) + "\n\n---\n\n")

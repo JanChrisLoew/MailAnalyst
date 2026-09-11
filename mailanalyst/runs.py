@@ -10,6 +10,7 @@ from mailanalyst.config import CACHE_SCHEMA_VERSION, LOGGER
 from mailanalyst.cache import PARSER_VERSION, STORAGE_VERSION
 from mailanalyst.hashing import sha256_file
 from mailanalyst.version import build_info
+from mailanalyst.message_schema import MESSAGE_SCHEMA_VERSION
 
 
 def utc_now():
@@ -23,7 +24,8 @@ class Run:
         self.pending.mkdir(parents=True)
         self.data = {"manifest_version": 1, "run_id": self.root.name, "status": "running",
                      "started_at": utc_now(), "finished_at": None, "options": options,
-                     "versions": {"cache": STORAGE_VERSION, "schema": CACHE_SCHEMA_VERSION, "parser": PARSER_VERSION},
+                     "versions": {"cache": STORAGE_VERSION, "schema": CACHE_SCHEMA_VERSION,
+                                  "message_schema": MESSAGE_SCHEMA_VERSION, "parser": PARSER_VERSION},
                      "sources": [], "outputs": [], "error": None, "application": build_info()}
         self.write_manifest()
 
@@ -47,6 +49,8 @@ class Run:
         self.data.pop("sources", None)
         self.data.update(manifest_version=2, sources_file="sources.jsonl", source_count=store.source_count,
                          messages=len(store), parser_errors=store.errors, cache_hits=0,
+                         quality_warning_messages=store.warning_messages,
+                         quality_warnings=store.warning_count,
                          batch_size=store.batch_size, max_batch_rows=store.max_batch_rows,
                          max_batch_bytes=store.max_batch_bytes)
         self.data["versions"]["cache"] = 2
@@ -54,6 +58,11 @@ class Run:
             for audit in store.audits():
                 self.data["cache_hits"] += audit["mode"] == "cache"
                 file.write(json.dumps(audit, ensure_ascii=False) + "\n")
+        if store.warning_count:
+            self.data["quality_warnings_file"] = "quality_warnings.jsonl"
+            with (self.root / "quality_warnings.jsonl").open("w", encoding="utf-8") as file:
+                for warning in store.quality_warnings():
+                    file.write(json.dumps(warning, ensure_ascii=False) + "\n")
         if store.errors:
             for row in store.records():
                 if row.get("parse_status") == "error":

@@ -58,7 +58,7 @@ class PstStreamingTests(unittest.TestCase):
         def rows(path, signature, *_):
             try:
                 for i in range(1201):
-                    yield {**signature.__dict__, "source_file_path": signature.key, "cache_schema_version": 6,
+                    yield {**signature.__dict__, "source_file_path": signature.key, "cache_schema_version": 7,
                            "parse_status": "ok", "message_id": f"<{i}@example.test>"}
             finally:
                 closed.append(True)
