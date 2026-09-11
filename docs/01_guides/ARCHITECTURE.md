@@ -169,13 +169,19 @@ mit eindeutigen Message-IDs. `tests/test_mail_corpus.py` prüft reale Parser,
 Vorprüfung, sieben Exportformate in unterschiedlicher Prüftiefe sowie einen
 550-Nachrichten-Lauf einschließlich Cache und Ergebnisindex-Seiten.
 
-`tests/test_pst_file.py` ist ein optionaler Windows-Integrationstest gegen eine
+`tests/test_pst_file.py` ist ein optional ausgeführter Windows-Integrationstest gegen eine
 gehashte öffentliche PST-Referenzdatei. `scripts/fetch_pst_test_fixture.py` lädt
 sie ausschließlich an einen expliziten neuen Pfad und verwirft Dateien mit
 abweichender Prüfsumme. Die separate `requirements-pst-test.txt` fixiert das
-Drittanbieter-Wheel samt Hash; es gehört weder zur Standardlaufzeit noch zum
-Build. Dieser Test belegt den tatsächlichen libpff-Dateipfad, ersetzt aber weder
+Drittanbieter-Wheel für diesen Prüfweg zusätzlich samt Hash; dieselbe Abhängigkeit
+gehört seit 0.7 zur Windows-Standardlaufzeit und zum Build. Dieser Test belegt den
+tatsächlichen libpff-Dateipfad, ersetzt aber weder
 ein selbst erzeugtes synthetisches Archiv noch einen Outlook-Test.
+
+Der libpff-Adapter öffnet PST-Quellen als eigene binäre Leseströme und übergibt
+sie an `pypff.open_file_object()`. Dadurch hängt der portable Windows-Build beim
+Pfadauflösen nicht vom aktuellen Prozessarbeitsverzeichnis ab. Archiv und Strom
+werden auch bei frühem Generatorabschluss oder Öffnungsfehler geschlossen.
 
 Die vorhandenen Befehle `python mail_analyst.py` und `python mail_analyst_gui.py` bleiben erhalten. Zusätzlich ist `python -m mailanalyst` verfügbar. Der PyInstaller-Build verwendet weiterhin den GUI-Einstieg und nimmt das Paket über seine Imports auf. Schriftressourcen werden im Entwicklungsbetrieb relativ zur Projektwurzel, im Build relativ zu `sys._MEIPASS` gefunden.
 

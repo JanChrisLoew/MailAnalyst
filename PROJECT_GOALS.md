@@ -44,7 +44,9 @@ Die Beispiele beschreiben Rechercheziele. Eine automatische fachliche Bewertung 
 
 - EML-, MSG- und PST-Quellen unterstützen.
 - Einzeldateien und Ordnerbestände stapelweise verarbeiten können.
-- Für PST sowohl einen Weg über klassisches Outlook als auch einen unabhängigen Importweg vorsehen; den Verarbeitungsweg auswählbar machen.
+- Für PST im Pilot einen von Outlook unabhängigen, mitgelieferten libpff-Weg
+  bereitstellen. Der vorhandene Outlook-Weg darf als optionale Entwicklungsoption
+  auswählbar bleiben, ist aber keine Voraussetzung für die Pilotfreigabe.
 - Mailinhalte und Metadaten in strukturierte und gut lesbare Ausgabeformate überführen.
 - Große, mehrjährige Bestände als Zielgröße berücksichtigen; eine konkrete Nachrichtenanzahl oder Archivgröße ist noch nicht vereinbart.
 
@@ -88,8 +90,14 @@ nachvollziehbare Datenqualität, Fehler-/Abbruchverhalten und ein vollständig
 bedienter Windows-Build. Die spätere Praxisabnahme mit historischen Archiven bleibt
 für eine Betriebsfreigabe erforderlich. Die vorgeschlagene Versionsfolge und
 konkreten Abnahmekriterien stehen in der [Ausbauplanung](docs/01_guides/ROADMAP.md).
-Versionsnummern, Detailumfang und offene Hardware-/PST-Entscheidungen sind dort
-als Planung beziehungsweise Annahmen gekennzeichnet.
+Versionsnummern, Detailumfang sowie offene Hardware- und PST-Testbestandsfragen
+sind dort als Planung beziehungsweise Annahmen gekennzeichnet.
+
+Festlegung vom 11. September 2026: Der Pilotumfang umfasst EML, MSG und PST über
+das mitgelieferte libpff-Backend. Eine Outlook-Installation und die Abnahme des
+Outlook-COM-Backends sind für diesen Pilot nicht erforderlich. Das Outlook-Backend
+bleibt ein optionaler späterer Importweg und darf bis zu seiner eigenen Abnahme
+nicht als freigegebener Pilotweg dargestellt werden.
 
 ### Aktuell nicht vorgesehen
 
@@ -141,8 +149,9 @@ Diese Maßnahmen unterstützen die Projektziele. Die konkrete technische Umsetzu
 
 - Technische Referenzgröße: 50.000 Nachrichten; Skalierungstests mit 1.000 und 100.000 Nachrichten. Maximale Archivgröße in Bytes und Anzahl der Quellen pro Lauf bleiben offen.
 - Zielhardware, erlaubte Laufzeit und verfügbarer Arbeitsspeicher.
-- Festlegung vom 11. September 2026: Der erste Pilot-Build soll PST-Dateien auch
-  ohne Outlook über einen mitgelieferten, geprüften libpff-Weg lesen können.
+- Festlegung vom 11. September 2026: Der erste Pilot-Build liest PST-Dateien ohne
+  Outlook über einen mitgelieferten, geprüften libpff-Weg. Das Outlook-COM-Backend
+  ist nicht Teil der Pilotfreigabe.
 - Welche Anlageninhalte später benötigt werden: nur Inventar, auch Export, Volltextsuche oder weitere Verarbeitung.
 - Welche konkreten Recherchefragen und erwarteten Treffer als fachliche Abnahme dienen.
 - Welche Anforderungen an die Dokumentation von Belegen und die Reproduzierbarkeit verbindlich gelten sollen.

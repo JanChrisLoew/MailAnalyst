@@ -34,9 +34,9 @@ Nachgewiesen sind der 83-Test-Stand von 0.6.0-dev.1, ein gemischter Lauf mit 550
 tatsächlichen MSG-/EML-Dateien und frühere synthetische EML-Großläufe. Eine
 gültige öffentliche PST-Referenzdatei wurde inzwischen über den tatsächlichen
 libpff-Dateipfad einschließlich Cache und Quellhash geprüft. Da ihr Inhalt nicht
-vom Projekt selbst erzeugt wurde, ersetzt sie weder das geforderte synthetische
-Sollarchiv noch die Outlook-Abnahme. Die jüngsten Arbeitsblöcke sind lokal und
-nicht eingecheckt.
+vom Projekt selbst erzeugt wurde, ersetzt sie nicht das geforderte synthetische
+Sollarchiv. Die Arbeitsblöcke sind bis Commit `8d5de5a` eingecheckt und auf den
+Hauptbranch übertragen; der nachfolgende Prüfstand ist im Status verlinkt.
 
 ## Versionsfolge
 
@@ -108,10 +108,10 @@ erhalten; absichtliche Formatverluste sind nachgewiesen statt stillschweigend.
 
 Zugeordnete Aufgaben: IMPORT-01..03, DATA-08; Entscheidung DEC-02.
 
-Planungsannahme bis zur Entscheidung: EML, MSG und mindestens ein geprüfter
-PST-Weg für den Pilot. Ein ausdrücklich auf EML/MSG begrenzter Pilot wäre möglich,
-ändert aber nicht das langfristige PST-Ziel. Ungeprüfte Backends zählen nicht
-zur Freigabe und müssen im Pilotpaket klar als nicht freigegeben behandelt werden.
+Festgelegter Pilotumfang: EML, MSG und PST über das mitgelieferte libpff-Backend.
+Das vorhandene Outlook-COM-Backend bleibt eine optionale Entwicklungsoption,
+zählt nicht zur Pilotfreigabe und ist kein Blocker für 0.7.0. Bis zu einer eigenen
+realen Abnahme darf es nicht als freigegebener Pilotweg dargestellt werden.
 
 1. Nutzbaren PST-Erzeuger und Importweg bereitstellen. Synthetische Archive mit
    bekannten Ordnern, Nachrichten, Empfängern, Zeiten und Anlagen erzeugen.
@@ -119,24 +119,28 @@ zur Freigabe und müssen im Pilotpaket klar als nicht freigegeben behandelt werd
    erweitern. Nicht unterstützte Elemente müssen sichtbar bleiben.
 3. Exchange-/SMTP-Auflösung, Antwortbezüge und Datumsnormalisierung verbessern;
    ungelöste Werte getrennt erhalten. Keine erfundenen Adressen oder Zeitpunkte.
-4. Outlook-Lifecycle bei Erfolg, frühem Fehler und Abbruch prüfen. Nur selbst
-   eingebundene Teststores entfernen; vorhandene Stores unverändert lassen.
-5. Schutz der Original-PST praktisch nachweisen. Falls Outlook beim Öffnen schreibt,
-   nur auf einer getrennten Arbeitskopie importieren; Hash/Bezug des Originals und
-   Arbeitskopie getrennt dokumentieren. Vorher-/Nachher-Hashprüfung nicht abschalten.
+4. Schutz der Original-PST für libpff praktisch bei Erfolg, Fehler und Abbruch
+   nachweisen; Vorher-/Nachher-Hashprüfung nicht abschalten.
 
-Abnahme: Alle für den Pilot zugesagten Wege lesen gültige synthetische Archive mit
+Die reale Outlook-Lifecycle-Prüfung bei Erfolg, frühem Fehler und Abbruch bleibt
+eine spätere Abnahme des optionalen Backends. Falls dieser Weg später freigegeben
+wird und Outlook beim Öffnen schreibt, darf nur eine nachvollziehbare Arbeitskopie
+eingebunden werden.
+
+Abnahme: EML, MSG und der libpff-PST-Weg lesen gültige synthetische Dateien mit
 bekannten Sollfeldern. Originaldateien bleiben bytegleich; Hashänderungen und
-unlesbare Elemente werden erklärt. Ein erfolgreicher Outlook-Lauf ersetzt keine
-libpff-Abnahme und umgekehrt. Fehlt ein zugesagter Weg, bleibt die Version offen.
+unlesbare Elemente werden erklärt. Fehlt einer dieser zugesagten Wege, bleibt die
+Version offen. Ein Outlook-Lauf ist dafür nicht erforderlich.
 
 Zwischenstand vom 11. September: Der echte libpff-Dateipfad ist mit einer
 öffentlichen, nicht persönlichen PST-Referenzdatei geprüft; die Quelle blieb
 bytegleich. Außerdem besteht eine synthetische MSG ausschließlich mit komprimiertem
 RTF-Body und eine echte eingebettete MSG-Unterstruktur. Deren Name und Anzahl
 bleiben sichtbar; der nicht exportierte innere Inhalt erzeugt eine Warnung. Das
-selbst erzeugte PST-Sollarchiv, Outlook und die Auslieferungsentscheidung für
-libpff bleiben offen.
+selbst erzeugte PST-Sollarchiv bleibt offen. Der vollständig bediente lokale
+EXE-PST-Erstlauf und die Cachewiederholung sind bestanden. libpff ist als Pilotweg
+entschieden, gebündelt und lizenzseitig dokumentiert; Outlook gehört nicht zur
+Pilotfreigabe. Offline- und saubere Zielsystemabnahme bleiben REL-02.
 
 ## 0.8.0 – Fehlerfestigkeit und große Läufe
 

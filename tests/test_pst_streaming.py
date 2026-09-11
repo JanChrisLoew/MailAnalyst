@@ -26,12 +26,16 @@ class PstStreamingTests(unittest.TestCase):
         folder = types.SimpleNamespace(name="Synthetic", number_of_sub_messages=1000, number_of_sub_folders=0)
         folder.get_sub_message = Mock(side_effect=lambda i: types.SimpleNamespace(identifier=i, subject=f"Mail {i}"))
         archive = types.SimpleNamespace(get_root_folder=lambda: folder, close=Mock())
-        with patch.dict("sys.modules", {"pypff": types.SimpleNamespace(open=lambda _: archive)}):
+        pypff = types.SimpleNamespace(open_file_object=Mock(return_value=archive))
+        with patch.dict("sys.modules", {"pypff": pypff}):
             iterator = iter_pst_libpff(self.path, self.signature, "Europe/Berlin")
             self.assertEqual(next(iterator)["subject"], "Mail 0")
+            source_stream = pypff.open_file_object.call_args.args[0]
+            self.assertFalse(source_stream.closed)
             self.assertEqual(folder.get_sub_message.call_count, 1)
             iterator.close()
             archive.close.assert_called_once()
+            self.assertTrue(source_stream.closed)
 
     def test_outlook_generator_closes_only_its_own_store(self):
         items = types.SimpleNamespace(Count=1000, Item=Mock(return_value=types.SimpleNamespace(Class=43)))

@@ -34,7 +34,12 @@ def iter_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) ->
             return value.decode("utf-8", errors="replace")
         return str(value or "")
 
-    pst_file = pypff.open(str(path.resolve()))
+    source_stream = path.resolve().open("rb")
+    try:
+        pst_file = pypff.open_file_object(source_stream)
+    except Exception:
+        source_stream.close()
+        raise
 
     def children(folder, count_name, getter_name, fallback):
         count = attr(folder, count_name, default=None)
@@ -105,6 +110,7 @@ def iter_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) ->
             yield row
     finally:
         pst_file.close()
+        source_stream.close()
 
 
 def parse_pst_libpff(path, signature, timezone_name):

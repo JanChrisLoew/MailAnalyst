@@ -47,6 +47,8 @@ Die beiden Einstiegsskripte delegieren an das Paket `mailanalyst`. Python-Import
 ## Entwicklung und Tests
 
 Aktueller Entwicklungskandidat: **0.7.0-dev.1**, noch keine Betriebsfreigabe.
+Der Pilotumfang verwendet für PST das mitgelieferte libpff-Backend und benötigt
+kein Outlook. Das vorhandene Outlook-COM-Backend ist nicht Teil der Pilotfreigabe.
 Die zentrale Version steht in `mailanalyst/version.py`, im Fenstertitel sowie
 unter `python -m mailanalyst --version`. Laufmanifeste enthalten `application`.
 
@@ -91,9 +93,10 @@ $env:MAILANALYST_PST_TEST_FILE=(Resolve-Path out\pst-test\outlook.pst).Path
 .\.venv\Scripts\python.exe -m unittest tests.test_pst_file -v
 ```
 
-Die Abhängigkeit ist exakt mit Wheel-Hash fixiert und bleibt optional; sie gehört
-nicht zur normalen Installation oder zum Windows-Build. Downloader und Test
-akzeptieren nur die festgelegte SHA-256-Prüfsumme. Die PST bleibt wegen der
+Die separate Testdatei fixiert dieselbe Windows-Laufzeitabhängigkeit zusätzlich
+mit einem Wheel-Hash; `libpff-python-windows` gehört zur normalen Installation
+und zum Windows-Build. Downloader und Test akzeptieren nur die festgelegte
+SHA-256-Prüfsumme. Die PST bleibt wegen der
 Repository-Regeln unter `out/` und außerhalb von Git. Der Test prüft libpff,
 Ordner, Betreff, Datum, Qualitätswarnungen, Analysepaket, Cachewiederholung und
 Bytegleichheit der Quelle. Herkunft, Ergebnis und Grenzen stehen im
@@ -202,7 +205,7 @@ Fuer Markdown kann vor dem Lauf die Linkdarstellung gewaehlt werden:
 
 Parquet und JSON bleiben davon unberuehrt und enthalten weiterhin die vollstaendigen Masterdaten. Die getroffene Auswahl wird zusammen mit Eingabe, Ausgabeprofil, PST-Backend und Quellenanzahl in `processing_options.json` dokumentiert.
 
-In der Oberflaeche kann eine einzelne `.eml`-, `.msg`- oder `.pst`-Datei oder ein kompletter Ordner ausgewaehlt werden. Fuer PST stehen `Automatisch`, `Ohne Outlook (libpff)` und `Klassisches Outlook` zur Wahl. Nach dem Lauf zeigt eine Tabelle Datum, Absender, Betreff, Quellformat und Parserstatus.
+In der Oberflaeche kann eine einzelne `.eml`-, `.msg`- oder `.pst`-Datei oder ein kompletter Ordner ausgewaehlt werden. Fuer PST stehen `Automatisch`, `Ohne Outlook (libpff)` und `Klassisches Outlook` zur Wahl. Im Pilot ist nur der mitgelieferte libpff-Weg freigegeben; das weiterhin sichtbare Outlook-Backend ist eine optionale, noch nicht real abgenommene Entwicklungsoption. Nach dem Lauf zeigt eine Tabelle Datum, Absender, Betreff, Quellformat und Parserstatus.
 
 Ueber `Zielordner...` kann die Ausgabe bewusst ausserhalb des Projekt-Repositories abgelegt werden, zum Beispiel auf einem verschluesselten Datentraeger oder in einem separaten Analyse-Workspace. Beim Markdown-Monatsordner liegen die Monatsdateien und Indizes unter `exports/mail_workspace/` des Laufordners; `parse_log.txt` liegt direkt im Laufordner.
 
@@ -229,7 +232,7 @@ Optional kann `build_exe.ps1 -PythonPath <Python-EXE>` eine andere vorbereitete
 Umgebung verwenden. Entwicklungsstarts ohne Buildmetadaten werden ausdrücklich
 als `development` ausgewiesen.
 
-Das Outlook-Backend bindet das Archiv fuer die Dauer des Imports in klassisches Outlook fuer Windows ein und entfernt es danach wieder. Das alternative `libpff`-/`pypff`-Backend liest die PST direkt und benoetigt kein Outlook, muss unter Windows aber separat installiert oder als geprueftes Binary bereitgestellt werden. Bei `Automatisch` wird libpff bevorzugt und andernfalls Outlook verwendet. PST-Dateien werden seriell verarbeitet.
+Das Outlook-Backend bindet das Archiv fuer die Dauer des Imports in klassisches Outlook fuer Windows ein und entfernt es danach wieder. Das alternative `libpff`-/`pypff`-Backend liest die PST direkt, benoetigt kein Outlook und ist im Windows-Paket enthalten. Bei `Automatisch` wird libpff bevorzugt und andernfalls Outlook verwendet. Fuer den Pilot ist libpff der freigegebene PST-Weg; PST-Dateien werden seriell verarbeitet.
 
 Die Auswahl ist auch auf der Kommandozeile moeglich:
 

@@ -6,7 +6,8 @@ Die [Versions- und Ausbauplanung](01_guides/ROADMAP.md) schlägt 0.5.0 bis 1.0.0
 mit konkreten Abnahmekriterien vor. Nutzerfestlegung: Umzug zum Echtdaten-Test
 erst nach produktionsnaher synthetischer Abnahme. Versionsnummern und Detailumfang
 sind Planungsstand, keine bestehenden Releases. Umzug und Echtdatenverarbeitung
-wurden nicht gestartet; Hardware- und PST-Entscheidungen bleiben offen.
+wurden nicht gestartet; Zielhardware und das synthetische PST-Sollarchiv bleiben
+offen. Der PST-Pilotweg über das mitgelieferte libpff ist entschieden.
 
 ## Erreichter Stand
 
@@ -19,15 +20,24 @@ Der vollständige Standardlauf bestand danach 85 Tests mit einem erwarteten
 optionalen PST-Skip; der tatsächliche PST-Dateitest war zuvor separat erfolgreich.
 Nach DEC-02 wurde libpff als Windows-3.11-Laufzeitabhängigkeit und PyInstaller-
 Modul aufgenommen. Der 0.7.0-dev.1-Build enthält `pypff` und beide LGPLv3+-
-Lizenztexte; echter PST-Lauf und Build waren erfolgreich. Eine vollständig
-bediente PST-EXE-Abnahme bleibt offen.
+Lizenztexte; echter PST-Lauf und Build waren erfolgreich. Beim ersten vollständig
+bedienten EXE-PST-Lauf wurde eine Abhängigkeit von einem zugänglichen
+Prozessarbeitsverzeichnis gefunden: `pypff.open()` scheiterte beim Windows-
+Pfadauflösen. Der Adapter übergibt nun einen selbst geöffneten binären Lesestrom
+an `pypff.open_file_object()` und schließt beide Ressourcen sicher. Der neu
+gebaute lokale Kandidat bestand danach den vollständig bedienten libpff-PST-
+Erstlauf mit zwei Nachrichten und null Parserfehlern sowie die Wiederholung mit
+einem Cachetreffer. JSON, Parquet, SQLite, Markdown-Verweise und Manifesthashes
+waren konsistent; die PST blieb bytegleich.
+[Aktueller Nachweis](02_reports/2026-09-11_outlook_free_pilot_verification.md).
 
 Der erste 0.7.0-Prüfschritt liest eine gültige öffentliche PST-Referenzdatei mit
 dem tatsächlichen libpff-Backend. Zwei Nachrichten in zwei bekannten Ordnern,
 Datum, Betreff, Backend, strukturierte Warnungen, Analysepaket und anschließender
 Cachetreffer wurden geprüft; der SHA-256 der Quelle blieb vor und nach beiden
-Läufen gleich. Das optionale Windows-Test-Wheel ist mit Version und Hash separat
-fixiert und bleibt außerhalb von Standardinstallation und Build. Weil die Datei
+Läufen gleich. Das Windows-Wheel ist für den Integrationstest zusätzlich mit
+Version und Hash fixiert und gehört seit DEC-02 auch zur Standardinstallation
+und zum Build. Weil die Datei
 nicht vom Projekt selbst synthetisch erzeugt wurde, ist dies noch keine vollständige
 PST- oder 0.7.0-Abnahme. [Nachweis](02_reports/2026-09-11_libpff_pst_verification.md).
 
@@ -129,8 +139,8 @@ Namenskonvention am 5. September 2026 umgesetzt: gepflegte Beschreibungen unter 
 | ID | Priorität | Status | Umfang / nächster Schritt |
 | --- | --- | --- | --- |
 | SCALE-01 | P1 | erledigt | CLI-/GUI-Nachrichtenverarbeitung und Exporte mit begrenzten Batches; synthetische EML- und Stream-Benchmarks. Quellenmetadaten und Fremdparser bleiben größenabhängig; keine feste RAM-Garantie. [Nachweis](02_reports/2026-09-06_batch_verification.md). |
-| IMPORT-01 | P2 | teilweise | MSG-Datumsfehler behoben; zehn MSG-/zwölf EML-Varianten, 550 gemischte Nachrichten sowie separat komprimiertes RTF und eine echte eingebettete MSG geprüft. Eingebettete Inhalte werden sichtbar inventarisiert, aber noch nicht exportiert. Eine gültige öffentliche PST-Referenzdatei läuft über libpff mit zwei Sollnachrichten, Analysepaket und Cache. [MSG-Nachweis](02_reports/2026-09-10_synthetic_import_verification.md), [gemischter Bestand](02_reports/2026-09-10_mixed_corpus_verification.md), [PST-/RTF-/Embedded-Nachweis](02_reports/2026-09-11_libpff_pst_verification.md). Ein selbst erzeugtes synthetisches PST-Sollarchiv, Outlook und historische Archive bleiben offen. |
-| IMPORT-02 | P2 | teilweise | Iteratorabschluss entfernt nur selbst hinzugefügte Stores und beendet COM auch bei Fehlern. Testdoubles prüfen vorzeitiges Schließen und vorhandene Stores. Fehler vor verfügbarer RootFolder-Referenz sowie reale Outlook-Läufe bleiben offen. Nachweis: Batchprüfung. |
+| IMPORT-01 | P2 | teilweise | MSG-Datumsfehler behoben; zehn MSG-/zwölf EML-Varianten, 550 gemischte Nachrichten sowie separat komprimiertes RTF und eine echte eingebettete MSG geprüft. Eingebettete Inhalte werden sichtbar inventarisiert, aber noch nicht exportiert. Eine gültige öffentliche PST-Referenzdatei läuft über libpff mit zwei Sollnachrichten, Analysepaket und Cache; der vollständig bediente lokale EXE-Erst- und Cachelauf ist bestanden. [MSG-Nachweis](02_reports/2026-09-10_synthetic_import_verification.md), [gemischter Bestand](02_reports/2026-09-10_mixed_corpus_verification.md), [PST-/RTF-/Embedded-Nachweis](02_reports/2026-09-11_libpff_pst_verification.md), [aktueller Build](02_reports/2026-09-11_outlook_free_pilot_verification.md). Ein selbst erzeugtes synthetisches PST-Sollarchiv und historische Archive bleiben offen. Outlook ist nicht Teil der Pilotfreigabe. |
+| IMPORT-02 | P2 | teilweise | Iteratorabschluss entfernt nur selbst hinzugefügte Stores und beendet COM auch bei Fehlern. Testdoubles prüfen vorzeitiges Schließen und vorhandene Stores. Fehler vor verfügbarer RootFolder-Referenz sowie reale Outlook-Läufe bleiben als spätere Abnahme des optionalen Backends offen, blockieren den libpff-Pilot aber nicht. Nachweis: Batchprüfung. |
 | IMPORT-03 | P2 | offen | Exchange-Adressen zuverlässig auflösen und Anzeigenamen von SMTP-Adressen unterscheiden. Review P2.2. |
 | EXPORT-01 | P2 | erledigt | Markdown-Metadaten sind maskiert und Mailtext steht in einem abgegrenzten Zitatbereich; XML bewahrt gültiges ergänzendes Unicode. [Nachweis](02_reports/2026-09-11_data_contract_export_hardening.md). |
 | DOMAIN-01 | P3 | offen | Deduplizierung, Konversationen, Beteiligtennormalisierung und optionale Anlagenverarbeitung nach fachlicher Priorisierung. |
@@ -138,8 +148,8 @@ Namenskonvention am 5. September 2026 umgesetzt: gepflegte Beschreibungen unter 
 
 ## Offene Nutzerentscheidungen
 
-Die Versionsplanung ersetzt die folgenden Entscheidungen nicht. Vorläufige
-Annahme für den Dev-Pilot: EML, MSG und mindestens ein geprüfter PST-Weg. Die
+Die Versionsplanung ersetzt die folgenden Entscheidungen nicht. Festgelegter
+Dev-Pilotumfang: EML, MSG und PST über das mitgelieferte libpff-Backend. Die
 Freigabekriterien der Roadmap können auch P2-/P3-Aufgaben für den Pilot erforderlich
 machen; historische Prioritäten sind kein Ersatz für die konkrete Versionsabnahme.
 
@@ -148,20 +158,19 @@ Die Details stehen in [PROJECT_GOALS.md, offene Festlegungen](../PROJECT_GOALS.m
 | ID | Status | Entscheidung |
 | --- | --- | --- |
 | DEC-01 | teilweise | Technischer Referenzbestand 50.000 Nachrichten, Tests mit 1.000/100.000; maximale Bytegröße, Zielhardware und Laufzeitgrenzen bleiben offen. |
-| DEC-02 | entschieden | Festlegung vom 11. September 2026: Der Pilot-Build muss PST ohne Outlook über einen mitgelieferten und geprüften libpff-Weg unterstützen. Paket-, Lizenz-, Offline- und EXE-Abnahme laufen unter IMPORT-01/REL-02. |
+| DEC-02 | entschieden | Festlegung vom 11. September 2026: Der Pilot-Build muss PST ohne Outlook über einen mitgelieferten und geprüften libpff-Weg unterstützen. Das Outlook-COM-Backend ist nicht Teil der Pilotfreigabe. Paket-, Lizenz-, Offline- und EXE-Abnahme laufen unter IMPORT-01/REL-02. |
 | DEC-03 | Entscheidung offen | Anlagenumfang: Inventar, Export, Volltextsuche oder weitere Verarbeitung. |
 | DEC-04 | Entscheidung offen | Fachliche Abnahmefragen, erwartete Treffer und verbindliche Beleganforderungen. |
 | DEC-05 | Entscheidung offen | Zielumgebung und Grenze zwischen MailAnalyst und späterer KI-Recherche. |
 
 ## Empfohlener nächster Arbeitsblock
 
-Als nächstes den begonnenen 0.7.0-Importblock fortsetzen: ein selbst erzeugtes
-synthetisches PST-Sollarchiv für mindestens ein Backend herstellen und den
-Pilotumfang zu DEC-02 festlegen. Danach MSG-Sondervarianten und
-Exchange-/SMTP-Auflösung (IMPORT-03)
-bearbeiten. CHECK-03 hat weiter Grenzen bei Outlook-Bereitschaft und
-Platzabschätzung; Referenzhardware bleibt offen. Eine neue interaktive EXE-Abnahme
-für 0.7.0-dev.1 ist nachzuholen. Die [Roadmap](01_guides/ROADMAP.md) ordnet
+Als nächstes den begonnenen 0.7.0-Importblock abschließen: ein selbst erzeugtes
+synthetisches PST-Sollarchiv für libpff herstellen und damit Sollfelder sowie
+Fehler-/Abbruchverhalten prüfen. Danach Exchange-/SMTP-Auflösung (IMPORT-03)
+bearbeiten. CHECK-03 hat
+weiter Grenzen bei Platzabschätzung; Referenzhardware bleibt offen. Die
+[Roadmap](01_guides/ROADMAP.md) ordnet
 Importabnahme, Wiederaufnahme und Umzugskriterien ein.
 
 Die Übersicht ist kein Auftrag, alle offenen Punkte automatisch umzusetzen. Jeder neue Block erhält einen klaren Umfang und passende Abnahmekriterien.
@@ -173,9 +182,9 @@ Abnahmedetails stehen zentral in der Roadmap; Fortschritt wird hier nachgewiesen
 | ID | Priorität | Status | Umfang / geplante Version |
 | --- | --- | --- | --- |
 | REL-01 | P2 | teilweise | 0.5.0-dev.1 mit zentraler Version, Build-/Quellbezug, Quellsnapshot und Prüfsummen; frische Umgebung geprüft. Synthetischer EXE-Analysepaket-Workflow und Cachewiederholung bestanden; festgeschriebener Release-Quellstand und Gesamtabnahme bleiben offen. [Build](02_reports/2026-09-10_roadmap_foundation.md), [EXE-Prüfung](02_reports/2026-09-10_interactive_exe_verification.md). |
-| DATA-08 | P1 | teilweise | Für den lesenden libpff-Weg blieb die gehashte öffentliche PST vor und nach frischem Import und Cachelauf bytegleich. Outlook-Erfolg, -Fehler und -Abbruch sowie eine gegebenenfalls nötige Arbeitskopie bleiben offen. [Nachweis](02_reports/2026-09-11_libpff_pst_verification.md); 0.7.0. |
+| DATA-08 | P1 | teilweise | Für den lesenden libpff-Weg blieb die gehashte öffentliche PST vor und nach frischem Import und Cachelauf bytegleich. Fehler- und Abbruchnachweise mit einer gültigen PST bleiben offen. Outlook-Prüfungen sind außerhalb der Pilotfreigabe zurückgestellt. [Nachweis](02_reports/2026-09-11_libpff_pst_verification.md); 0.7.0. |
 | RUN-01 | P1 | offen | Checkpoints, verwaiste Läufe erkennen und sichere Wiederaufnahme an Quellengrenzen; 0.8.0. |
 | RUN-02 | P1 | offen | Parserhänger und Fehler-/Abbruchgrenzen einschließlich Ressourcenfreigabe beherrschen; 0.8.0. |
 | PERF-01 | P1 | offen | Referenzhardware und Zahlenlimits festlegen; synthetische Größenmatrix gegen diese Grenzen abnehmen; 0.8.0. |
 | OPS-01 | P2 | offen | Bestehendes Ergebnis wieder öffnen, Fehlerhilfe und nachvollziehbare Verwaltung eigener Zwischenprodukte; bis 0.9.0-rc.1. |
-| REL-02 | P1 | offen | Gesamtabnahme des konkreten EXE-Kandidaten auf sauberem Windows einschließlich Offline-Betrieb; Umzugsschwelle 0.9.0-rc.1. |
+| REL-02 | P1 | offen | Der korrigierte lokale 0.7.0-dev.1-Build auf Basis von Commit `8d5de5a` enthält libpff samt Lizenzen und bestand den vollständig bedienten PST-Erst- und Cachelauf. Die Buildmetadaten kennzeichnen die lokalen Änderungen korrekt. Offline und auf einem sauberen Windows-Testsystem bleibt ein festgeschriebener Kandidat abzunehmen; Umzugsschwelle 0.9.0-rc.1. [Nachweis](02_reports/2026-09-11_outlook_free_pilot_verification.md). |
