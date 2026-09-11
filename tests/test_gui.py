@@ -38,9 +38,14 @@ class GuiTests(unittest.TestCase):
         self.addCleanup(self.error_patch.stop)
 
     def close_app(self):
-        for event in self.app.tk.call("after", "info"):
-            self.app.after_cancel(event)
-        self.app.destroy()
+        app = self.app
+        for event in app.tk.call("after", "info"):
+            app.after_cancel(event)
+        app.destroy()
+        self.app = None
+        del app
+        # Tk variables must be finalized by the thread that owned the interpreter.
+        gc.collect()
         for handler in LOGGER.handlers[:]:
             handler.close()
             LOGGER.removeHandler(handler)

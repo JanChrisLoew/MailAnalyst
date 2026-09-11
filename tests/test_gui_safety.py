@@ -1,5 +1,6 @@
 """Exercise busy, cancel, restart and close with a live Tk event loop."""
 
+import gc
 import json
 import threading
 import tkinter as tk
@@ -31,6 +32,8 @@ class GuiSafetyTests(unittest.TestCase):
             for handler in LOGGER.handlers[:]:
                 handler.close()
                 LOGGER.removeHandler(handler)
+            self.app = None
+            gc.collect()
 
     def prepare(self):
         self.wait_for(lambda: bool(self.app.system_check_results))
