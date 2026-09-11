@@ -1,11 +1,13 @@
 # MailAnalyst – Versions- und Ausbauplanung
 
-Stand: 10. September 2026. Planung auf Basis des [aktuellen Status](../STATUS.md).
+Stand: 11. September 2026. Planung auf Basis des [aktuellen Status](../STATUS.md).
 
-Umsetzung begonnen: `0.5.0-dev.1` enthält Versions-/Buildgrundlage und erste
-Vorprüfungsverbesserungen. Dies ist ein Entwicklungskandidat, kein abgeschlossenes
-0.5.0-Release. Tatsächliche Nachweise und Restarbeiten stehen im Status und im
-[Umsetzungsbericht](../02_reports/2026-09-10_roadmap_foundation.md).
+Umsetzung fortgesetzt: `0.7.0-dev.1` ergänzt den versionierten Nachrichtenvertrag,
+strukturierte Qualitätswarnungen, gehärtete Textausgaben und erste reale
+PST-/MSG-Sonderformatnachweise. Ein optionaler
+libpff-Integrationstest liest zusätzlich eine gültige öffentliche PST-Datei,
+ohne sie zu verändern. Dies ist noch keine vollständige 0.7.0-Importabnahme.
+Tatsächliche Nachweise und Restarbeiten stehen im Status.
 
 ## Ziel und Verbindlichkeit
 
@@ -28,15 +30,13 @@ historischer Archive nicht vollständig vorwegnehmen.
 
 ## Ausgangspunkt
 
-Nachgewiesen sind 69 automatisierte Tests, ein gemischter Lauf mit 550 tatsächlichen
-MSG-/EML-Dateien und frühere synthetische EML-Großläufe. Der jüngste EXE-Build ist
-erfolgreich; die letzte vollständig bediente EXE-Abnahme liegt vor der MSG-Korrektur.
-Ein PST-Testdouble und eine ungültige PST-Datei zählen nicht als PST-Abnahme.
-Die jüngsten Arbeitsblöcke sind noch lokale, nicht eingecheckte Änderungen.
-
-In den geprüften Konfigurations-/Builddateien ist keine zentrale App-Version
-etabliert. **0.5.0** ist deshalb ein vorgeschlagener erster benannter Ausgangsstand,
-keine rückwirkende Behauptung über die Reife oder bisherige Releasehistorie.
+Nachgewiesen sind der 83-Test-Stand von 0.6.0-dev.1, ein gemischter Lauf mit 550
+tatsächlichen MSG-/EML-Dateien und frühere synthetische EML-Großläufe. Eine
+gültige öffentliche PST-Referenzdatei wurde inzwischen über den tatsächlichen
+libpff-Dateipfad einschließlich Cache und Quellhash geprüft. Da ihr Inhalt nicht
+vom Projekt selbst erzeugt wurde, ersetzt sie weder das geforderte synthetische
+Sollarchiv noch die Outlook-Abnahme. Die jüngsten Arbeitsblöcke sind lokal und
+nicht eingecheckt.
 
 ## Versionsfolge
 
@@ -66,10 +66,11 @@ Zugeordnete Aufgaben: REL-01, REPO-04, REPO-05.
 2. Eine zentrale App-Version einführen; in GUI, CLI-Versionsausgabe und Manifest
    ausgeben. Buildmetadaten nennen Quellrevision und einen gegebenenfalls veränderten Stand.
 3. Getestete Python- und Abhängigkeitsversionen für Windows festhalten und einen
-   reproduzierbaren Installations-/Buildweg einführen. Lokales Python 3.11 und
-   CI-Python 3.12 bewusst angleichen oder beide ausdrücklich prüfen.
+   reproduzierbaren Installations-/Buildweg einführen. Die lokale Windows-Abnahme
+   verwendet Python 3.11.9 und die Windows-Lockdatei.
 4. Releasepaket mit Versionshinweisen, bekannten Grenzen und Prüfsummen vorsehen;
-   CI um Buildnachweis und Dokumentations-Linkprüfung ergänzen.
+   Buildnachweis und Dokumentations-Linkprüfung lokal ausführen.
+   GitHub-CI ist auf Nutzerwunsch vom 10. September 2026 nicht vorgesehen.
 
 Abnahme: Ein frischer Checkout des festgelegten Quellstands lässt sich nach Anleitung
 installieren, testen und bauen. Zwei Builds müssen dieselbe App-/Abhängigkeitsbasis
@@ -78,6 +79,10 @@ haben; byteidentische EXEs werden damit nicht automatisch zugesichert.
 ## 0.6.0 – Vorprüfung, Datenvertrag und Exportqualität
 
 Zugeordnete Aufgaben: CHECK-01..03, DATA-07, EXPORT-01.
+
+Umsetzungsstand vom 11. September: CHECK-01/02 und DATA-07/EXPORT-01 sind
+implementiert und automatisiert geprüft. CHECK-03 bleibt wegen heuristischer
+Platzabschätzung und nicht praktisch geprüfter Outlook-Bereitschaft teilweise.
 
 1. Alle gefundenen Dateien inventarisieren. Auch ignorierte Dateien erscheinen im
    Bericht. Gefunden = unterstützt + ignoriert; unterstützt = ausgewählt + abgewählt.
@@ -124,6 +129,14 @@ Abnahme: Alle für den Pilot zugesagten Wege lesen gültige synthetische Archive
 bekannten Sollfeldern. Originaldateien bleiben bytegleich; Hashänderungen und
 unlesbare Elemente werden erklärt. Ein erfolgreicher Outlook-Lauf ersetzt keine
 libpff-Abnahme und umgekehrt. Fehlt ein zugesagter Weg, bleibt die Version offen.
+
+Zwischenstand vom 11. September: Der echte libpff-Dateipfad ist mit einer
+öffentlichen, nicht persönlichen PST-Referenzdatei geprüft; die Quelle blieb
+bytegleich. Außerdem besteht eine synthetische MSG ausschließlich mit komprimiertem
+RTF-Body und eine echte eingebettete MSG-Unterstruktur. Deren Name und Anzahl
+bleiben sichtbar; der nicht exportierte innere Inhalt erzeugt eine Warnung. Das
+selbst erzeugte PST-Sollarchiv, Outlook und die Auslieferungsentscheidung für
+libpff bleiben offen.
 
 ## 0.8.0 – Fehlerfestigkeit und große Läufe
 

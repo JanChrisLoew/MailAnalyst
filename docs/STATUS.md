@@ -1,6 +1,6 @@
 # MailAnalyst – aktueller Arbeitsstand
 
-Stand: 10. September 2026. Diese Datei ist die aktuelle Übersicht; Review- und Prüfberichte dokumentieren den jeweiligen historischen Stand.
+Stand: 11. September 2026. Diese Datei ist die aktuelle Übersicht; Review- und Prüfberichte dokumentieren den jeweiligen historischen Stand.
 
 Die [Versions- und Ausbauplanung](01_guides/ROADMAP.md) schlägt 0.5.0 bis 1.0.0
 mit konkreten Abnahmekriterien vor. Nutzerfestlegung: Umzug zum Echtdaten-Test
@@ -9,6 +9,44 @@ sind Planungsstand, keine bestehenden Releases. Umzug und Echtdatenverarbeitung
 wurden nicht gestartet; Hardware- und PST-Entscheidungen bleiben offen.
 
 ## Erreichter Stand
+
+Der aktuelle Entwicklungskandidat ist **0.7.0-dev.1**. Eine sechste synthetische
+MSG enthält eine echte eingebettete Nachricht als OLE-Unterstruktur. MailAnalyst
+inventarisiert Namen und Anzahl, exportiert den inneren Inhalt bewusst noch nicht
+und weist dies mit `embedded_message_not_extracted` aus. Nachrichtenvertrag 2
+und Parserrevision 3 verhindern eine stille Wiederverwendung älterer Cachezeilen.
+Der vollständige Standardlauf bestand danach 85 Tests mit einem erwarteten
+optionalen PST-Skip; der tatsächliche PST-Dateitest war zuvor separat erfolgreich.
+Nach DEC-02 wurde libpff als Windows-3.11-Laufzeitabhängigkeit und PyInstaller-
+Modul aufgenommen. Der 0.7.0-dev.1-Build enthält `pypff` und beide LGPLv3+-
+Lizenztexte; echter PST-Lauf und Build waren erfolgreich. Eine vollständig
+bediente PST-EXE-Abnahme bleibt offen.
+
+Der erste 0.7.0-Prüfschritt liest eine gültige öffentliche PST-Referenzdatei mit
+dem tatsächlichen libpff-Backend. Zwei Nachrichten in zwei bekannten Ordnern,
+Datum, Betreff, Backend, strukturierte Warnungen, Analysepaket und anschließender
+Cachetreffer wurden geprüft; der SHA-256 der Quelle blieb vor und nach beiden
+Läufen gleich. Das optionale Windows-Test-Wheel ist mit Version und Hash separat
+fixiert und bleibt außerhalb von Standardinstallation und Build. Weil die Datei
+nicht vom Projekt selbst synthetisch erzeugt wurde, ist dies noch keine vollständige
+PST- oder 0.7.0-Abnahme. [Nachweis](02_reports/2026-09-11_libpff_pst_verification.md).
+
+Die beim Gesamttest sichtbar gewordene native Python-Ausnahme `0x80000003`
+stammte aus verspäteter Tkinter-Objektfreigabe auf einem Workerthread. GUI-Tests
+lösen ihre App-Referenzen nun beim Aufräumen und erzwingen die Garbage Collection
+noch im GUI-Thread. Der kritische GUI-/Korpus-Ablauf sowie zwei aufeinanderfolgende
+vollständige Testprozesse liefen danach ohne Tcl-Abbruch oder Fehlerdialog durch.
+[Nachweis](02_reports/2026-09-11_libpff_pst_verification.md#tkinter-testprozess).
+
+Der Datenvertrags-/Exportblock vom 11. September liefert **0.6.0-dev.1**.
+Nachrichtenvertrag Version 1 prüft Pflichtbezüge, skalare Feldtypen, Parserstatus
+und UTC-Zeitstempel; fachlich mögliche Lücken erscheinen mit stabilen Warncodes
+im Laufmanifest und in `quality_warnings.jsonl`. libpff kopiert reine Anzeigenamen
+nicht mehr als SMTP-Adressen. Markdown trennt Mailtext als Zitatbereich und
+maskiert strukturwirksame Metadaten; XML erhält gültige Zeichen außerhalb der BMP.
+83 automatisierte Tests, Kompilierung, Abhängigkeits- und Diffprüfung sowie der
+Windows-Build waren erfolgreich. Native App-Steuerung stand für eine neue
+interaktive EXE-Bedienung nicht zur Verfügung. [Nachweis](02_reports/2026-09-11_data_contract_export_hardening.md).
 
 Der erste Roadmap-Umsetzungsblock liefert **0.5.0-dev.1** mit zentraler Version,
 Buildmetadaten, lokalem Quellsnapshot und Paketprüfsummen. Eine frische Umgebung
@@ -37,7 +75,7 @@ Der anschließende GUI-Batchblock ergänzt Phasen, Nachrichtenzähler, Laufzeit 
 
 Das UI-/UX-Review vom 7. September vereinheitlicht Sprache und Schrittbezeichnungen, reduziert dekorative Elemente, klärt Laufordner und Tabelleninteraktion und ergänzt Tastaturbedienung. Die interaktiv gefundenen Restfehler wurden anschließend behoben: Ergebnisinhalt und Navigation wechseln gemeinsam, Kernspalten sind bei Standardgröße vollständig sichtbar, Dialoge sind am Hauptfenster verankert und die Konfigurationsaktion bleibt bei Mindestgröße erreichbar. 61 automatisierte Tests, Kompilierung, Abhängigkeitsprüfung, Windows-Build und ein vollständig bedienter synthetischer EXE-Lauf waren erfolgreich. Nachweis: [UI-/UX-Review](02_reports/2026-09-07_ui_ux_review.md).
 
-Die Batch-, GUI-, Import- und Versionsblöcke werden gemeinsam als geprüfter Entwicklungsstand versioniert. Den aktuellen Commit- und Synchronisationsstand mit `git status` und `git log` feststellen. Die frühere Windows-CI vom 6. September bestätigt den Stand vor diesen Blöcken; ein neuer CI-Erfolg ist damit nicht belegt. Fachlicher Auftrag: [Projektziele](../PROJECT_GOALS.md).
+Die Batch-, GUI-, Import- und Versionsblöcke werden gemeinsam als geprüfter Entwicklungsstand versioniert. Den aktuellen Commit- und Synchronisationsstand mit `git status` und `git log` feststellen. Auf Nutzerwunsch vom 10. September 2026 ist der GitHub-CI-Workflow entfernt. Tests, Dokumentationsprüfung und Builds erfolgen lokal; frühere CI-Berichte bleiben historische Nachweise. Fachlicher Auftrag: [Projektziele](../PROJECT_GOALS.md).
 
 ## Prioritäten und Statusregeln
 
@@ -50,10 +88,10 @@ Statuswerte: **erledigt**, **teilweise**, **offen**, **Entscheidung offen**. „
 | ID | Priorität | Status | Umfang / nächster Schritt |
 | --- | --- | --- | --- |
 | REPO-01 | P2 | erledigt | Modularisierung und 200-Zeilen-Prüfung; siehe Refactoring-Abnahme vom 5. September. |
-| REPO-02 | P2 | erledigt | Lokale Tests und Windows-CI erfolgreich; zwei GitHub-Läufe vor der Historienbereinigung am 6. September remote bestätigt. Nachweis: Datenschutzprüfbericht. |
+| REPO-02 | P2 | erledigt | Lokale Tests erfolgreich. GitHub-CI am 10. September 2026 auf Nutzerwunsch entfernt; künftige Abnahmen lokal. Frühere GitHub-Läufe sind nur historische Nachweise. |
 | REPO-03 | P2 | erledigt | Agent-Einstieg, aktueller Status, Datenmodell und Repository-Prüfskill angelegt; Dokumentationsverweise geprüft. Am 5. September 2026 die verbindliche [Dokumentationsprüfung nach Änderungen](01_guides/ARCHITECTURE.md#dokumentationsprüfung-nach-änderungen) ergänzt und über AGENTS.md eingebunden. |
 | REPO-04 | P3 | erledigt | Windows-/Python-3.11.9-Baseline mit direkten/transitiven Versionspins; in frischer venv installiert, getestet und gebaut. Keine Wheel-Hashes/byteidentischen EXEs zugesichert. [Nachweis](02_reports/2026-09-10_roadmap_foundation.md). |
-| REPO-05 | P3 | teilweise | Lokale Dokumentations-Dateiziele automatisiert und in CI geprüft; einheitliche Formatierung und Abschnittsanker bleiben offen. [Nachweis](02_reports/2026-09-10_roadmap_foundation.md). |
+| REPO-05 | P3 | teilweise | Lokale Dokumentations-Dateiziele automatisiert geprüft; einheitliche Formatierung und Abschnittsanker bleiben offen. [Nachweis](02_reports/2026-09-10_roadmap_foundation.md). |
 | REPO-06 | P2 | erledigt | Bereinigung am 5. September 2026: alte Prüf-Kompatibilitätsmodule und CLI-Funktions-Reexports entfernt; Tests importieren direkt aus dem Paket. Berichte nach `docs/02_reports/` verschoben, README und Prüfskill aktualisiert, drei temporäre Prüfverzeichnisse entfernt. Zwölf Tests einschließlich CLI und Python-GUI bestanden; Skill validiert. Keine erneute EXE-Abnahme, da deren Paketimporte und Ressourcen unverändert sind. |
 | REPO-07 | P1 | erledigt | Öffentliche Commitidentität auf GitHub-Benutzername/Noreply umgestellt, bestehende Historie entsprechend bereinigt und betriebliche Kontextangaben neutralisiert. Ausschlussregeln und Veröffentlichungshinweise ergänzt. Externe Kopien/Caches sind nicht kontrollierbar. [Nachweis](02_reports/2026-09-06_public_repository_privacy.md). |
 
@@ -69,7 +107,7 @@ Namenskonvention am 5. September 2026 umgesetzt: gepflegte Beschreibungen unter 
 | DATA-04 | P1 | erledigt | Eindeutige Laufpakete mit Manifest, Fehler-/Abschlussstatus und getrennten Exporten. Explizite CLI-Ziele sind zusätzliche Kopien. Nachweis: Integritätsprüfung vom 6. September. |
 | DATA-05 | P1 | erledigt | Temporäre Einzelexporte mit Rücklese-/Anzahlprüfung, Markdown-Indexprüfung und Paketveröffentlichung erst nach Validierung. Keine gemeinsame atomare Transaktion über CLI-Kompatibilitätsziele. Nachweis: Integritätsprüfung vom 6. September. |
 | DATA-06 | P1 | erledigt | CSV-Sichtausgaben einschließlich Indizes/Prüfberichte erhalten Schutzpräfixe; Excel-Zeichenfolgen werden als Text gespeichert. Master-/JSON-/Parquet-Daten bleiben unverändert. Nachweis: GUI-/Exportprüfung vom 6. September. |
-| DATA-07 | P2 | offen | Ausführbare Schemavalidierung und Formatunterschiede absichern; DATA_MODEL beschreibt bisher nur den Iststand. |
+| DATA-07 | P2 | erledigt | Nachrichtenvertrag Version 2 erzwingt Pflichtbezüge, Feldtypen, Parserstatus und UTC-Annahme; stabile Warncodes einschließlich nicht exportierter eingebetteter Nachrichten werden laufbezogen als JSONL nachgewiesen. [Nachweis](02_reports/2026-09-11_data_contract_export_hardening.md), [Erweiterung](02_reports/2026-09-11_libpff_pst_verification.md#ergänzende-msg-prüfung). |
 
 ## GUI und Prüfungen
 
@@ -91,10 +129,10 @@ Namenskonvention am 5. September 2026 umgesetzt: gepflegte Beschreibungen unter 
 | ID | Priorität | Status | Umfang / nächster Schritt |
 | --- | --- | --- | --- |
 | SCALE-01 | P1 | erledigt | CLI-/GUI-Nachrichtenverarbeitung und Exporte mit begrenzten Batches; synthetische EML- und Stream-Benchmarks. Quellenmetadaten und Fremdparser bleiben größenabhängig; keine feste RAM-Garantie. [Nachweis](02_reports/2026-09-06_batch_verification.md). |
-| IMPORT-01 | P2 | teilweise | MSG-Datumsfehler behoben; anschließend zehn MSG-/zwölf EML-Varianten einschließlich ANSI und 550 gemischter Nachrichten geprüft. [MSG-Nachweis](02_reports/2026-09-10_synthetic_import_verification.md), [gemischter Bestand](02_reports/2026-09-10_mixed_corpus_verification.md). Synthetische PST-Dateien mit beiden Backends, RTF-/eingebettete MSG-Varianten und historische Archive bleiben offen. |
+| IMPORT-01 | P2 | teilweise | MSG-Datumsfehler behoben; zehn MSG-/zwölf EML-Varianten, 550 gemischte Nachrichten sowie separat komprimiertes RTF und eine echte eingebettete MSG geprüft. Eingebettete Inhalte werden sichtbar inventarisiert, aber noch nicht exportiert. Eine gültige öffentliche PST-Referenzdatei läuft über libpff mit zwei Sollnachrichten, Analysepaket und Cache. [MSG-Nachweis](02_reports/2026-09-10_synthetic_import_verification.md), [gemischter Bestand](02_reports/2026-09-10_mixed_corpus_verification.md), [PST-/RTF-/Embedded-Nachweis](02_reports/2026-09-11_libpff_pst_verification.md). Ein selbst erzeugtes synthetisches PST-Sollarchiv, Outlook und historische Archive bleiben offen. |
 | IMPORT-02 | P2 | teilweise | Iteratorabschluss entfernt nur selbst hinzugefügte Stores und beendet COM auch bei Fehlern. Testdoubles prüfen vorzeitiges Schließen und vorhandene Stores. Fehler vor verfügbarer RootFolder-Referenz sowie reale Outlook-Läufe bleiben offen. Nachweis: Batchprüfung. |
 | IMPORT-03 | P2 | offen | Exchange-Adressen zuverlässig auflösen und Anzeigenamen von SMTP-Adressen unterscheiden. Review P2.2. |
-| EXPORT-01 | P2 | offen | Markdown-Metadaten maskieren, Mailinhalt und generierte Struktur robuster trennen. Review P2.10. |
+| EXPORT-01 | P2 | erledigt | Markdown-Metadaten sind maskiert und Mailtext steht in einem abgegrenzten Zitatbereich; XML bewahrt gültiges ergänzendes Unicode. [Nachweis](02_reports/2026-09-11_data_contract_export_hardening.md). |
 | DOMAIN-01 | P3 | offen | Deduplizierung, Konversationen, Beteiligtennormalisierung und optionale Anlagenverarbeitung nach fachlicher Priorisierung. |
 | AI-01 | P3 | offen | Spätere lokale Analyseumgebung und rückverfolgbare Recherche; aktuell keine direkte KI-Integration. |
 
@@ -110,18 +148,21 @@ Die Details stehen in [PROJECT_GOALS.md, offene Festlegungen](../PROJECT_GOALS.m
 | ID | Status | Entscheidung |
 | --- | --- | --- |
 | DEC-01 | teilweise | Technischer Referenzbestand 50.000 Nachrichten, Tests mit 1.000/100.000; maximale Bytegröße, Zielhardware und Laufzeitgrenzen bleiben offen. |
-| DEC-02 | Entscheidung offen | Muss der erste verteilte Build PST zwingend ohne Outlook unterstützen? |
+| DEC-02 | entschieden | Festlegung vom 11. September 2026: Der Pilot-Build muss PST ohne Outlook über einen mitgelieferten und geprüften libpff-Weg unterstützen. Paket-, Lizenz-, Offline- und EXE-Abnahme laufen unter IMPORT-01/REL-02. |
 | DEC-03 | Entscheidung offen | Anlagenumfang: Inventar, Export, Volltextsuche oder weitere Verarbeitung. |
 | DEC-04 | Entscheidung offen | Fachliche Abnahmefragen, erwartete Treffer und verbindliche Beleganforderungen. |
 | DEC-05 | Entscheidung offen | Zielumgebung und Grenze zwischen MailAnalyst und späterer KI-Recherche. |
 
 ## Empfohlener nächster Arbeitsblock
 
-Als nächstes DATA-07 und EXPORT-01 (Datenvertrag und Exporthärtung) für den
-0.6.0-Block. Der synthetische EXE-Analysepaket-Workflow von 0.5.0-dev.1 ist
-einschließlich Cachewiederholung geprüft. CHECK-03 hat noch Grenzen bei Outlook-Bereitschaft
-und Platzabschätzung. PST-Testweg und Referenzhardware weiter klären. Die
-[Roadmap](01_guides/ROADMAP.md) ordnet Importabnahme, Wiederaufnahme und Umzugskriterien ein.
+Als nächstes den begonnenen 0.7.0-Importblock fortsetzen: ein selbst erzeugtes
+synthetisches PST-Sollarchiv für mindestens ein Backend herstellen und den
+Pilotumfang zu DEC-02 festlegen. Danach MSG-Sondervarianten und
+Exchange-/SMTP-Auflösung (IMPORT-03)
+bearbeiten. CHECK-03 hat weiter Grenzen bei Outlook-Bereitschaft und
+Platzabschätzung; Referenzhardware bleibt offen. Eine neue interaktive EXE-Abnahme
+für 0.7.0-dev.1 ist nachzuholen. Die [Roadmap](01_guides/ROADMAP.md) ordnet
+Importabnahme, Wiederaufnahme und Umzugskriterien ein.
 
 Die Übersicht ist kein Auftrag, alle offenen Punkte automatisch umzusetzen. Jeder neue Block erhält einen klaren Umfang und passende Abnahmekriterien.
 
@@ -132,7 +173,7 @@ Abnahmedetails stehen zentral in der Roadmap; Fortschritt wird hier nachgewiesen
 | ID | Priorität | Status | Umfang / geplante Version |
 | --- | --- | --- | --- |
 | REL-01 | P2 | teilweise | 0.5.0-dev.1 mit zentraler Version, Build-/Quellbezug, Quellsnapshot und Prüfsummen; frische Umgebung geprüft. Synthetischer EXE-Analysepaket-Workflow und Cachewiederholung bestanden; festgeschriebener Release-Quellstand und Gesamtabnahme bleiben offen. [Build](02_reports/2026-09-10_roadmap_foundation.md), [EXE-Prüfung](02_reports/2026-09-10_interactive_exe_verification.md). |
-| DATA-08 | P1 | offen | Unveränderte Original-PST praktisch nachweisen; bei schreibendem Import eine getrennte Arbeitskopie mit Herkunftsaudit; 0.7.0. |
+| DATA-08 | P1 | teilweise | Für den lesenden libpff-Weg blieb die gehashte öffentliche PST vor und nach frischem Import und Cachelauf bytegleich. Outlook-Erfolg, -Fehler und -Abbruch sowie eine gegebenenfalls nötige Arbeitskopie bleiben offen. [Nachweis](02_reports/2026-09-11_libpff_pst_verification.md); 0.7.0. |
 | RUN-01 | P1 | offen | Checkpoints, verwaiste Läufe erkennen und sichere Wiederaufnahme an Quellengrenzen; 0.8.0. |
 | RUN-02 | P1 | offen | Parserhänger und Fehler-/Abbruchgrenzen einschließlich Ressourcenfreigabe beherrschen; 0.8.0. |
 | PERF-01 | P1 | offen | Referenzhardware und Zahlenlimits festlegen; synthetische Größenmatrix gegen diese Grenzen abnehmen; 0.8.0. |

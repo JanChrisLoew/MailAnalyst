@@ -37,7 +37,6 @@ AGENTS.md
 README.md
 .gitignore
 .github\copilot-instructions.md
-.github\workflows\checks.yml
 .agents\skills\mailanalyst-verify\SKILL.md
 input_emails\
 out\
@@ -47,7 +46,7 @@ Die beiden Einstiegsskripte delegieren an das Paket `mailanalyst`. Python-Import
 
 ## Entwicklung und Tests
 
-Aktueller Entwicklungskandidat: **0.5.0-dev.1**, noch keine Betriebsfreigabe.
+Aktueller Entwicklungskandidat: **0.7.0-dev.1**, noch keine Betriebsfreigabe.
 Die zentrale Version steht in `mailanalyst/version.py`, im Fenstertitel sowie
 unter `python -m mailanalyst --version`. Laufmanifeste enthalten `application`.
 
@@ -72,7 +71,7 @@ Eigene Python-Dateien bleiben bei höchstens 200 physischen Zeilen. Eine Datei h
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-Die Tests verwenden ausschließlich synthetische E-Mails. Sie prüfen Parser und Cache, Exporte gegen einen vor der Aufteilung erzeugten Vergleichsbestand, beide CLI-Einstiege, den Tkinter-Workflow, die Dateigröße und die Importstruktur. GitHub Actions führt diese Prüfungen unter Windows aus. Vier zur Laufzeit erzeugte Unicode-MSG-Dateien werden mit dem tatsächlichen `extract-msg`-Parser einschließlich Analysepaket und Cache geprüft. PST-Dateien und repräsentative historische Bestände benötigen weiterhin eigene Abnahmen; die PST-Testdoubles ersetzen diese nicht.
+Die regulären Tests verwenden ausschließlich synthetische E-Mails. Sie prüfen Parser und Cache, Exporte gegen einen vor der Aufteilung erzeugten Vergleichsbestand, beide CLI-Einstiege, den Tkinter-Workflow, die Dateigröße und die Importstruktur. Die Prüfungen werden lokal unter Windows ausgeführt; GitHub-CI ist auf Nutzerwunsch deaktiviert. Fünf zur Laufzeit erzeugte MSG-Dateien, darunter eine reine komprimierte RTF-Nachricht, werden mit dem tatsächlichen `extract-msg`-Parser einschließlich Analysepaket und Cache geprüft. Ein optionaler Integrationstest verwendet eine kleine öffentliche PST-Testdatei mit einer herstellerseitigen Outlook-Willkommensnachricht; sie enthält keine persönlichen Postfachdaten, erfüllt aber nicht den strengeren Nachweis eines selbst erzeugten synthetischen Archivs. Repräsentative historische Bestände und das Outlook-Backend benötigen weiterhin eigene Abnahmen.
 
 Einen synthetischen MSG-Bestand mit Klartext, HTML, Anlage, Antwortbezug, fehlendem Datum und Zeitumstellungen erzeugen (neuer Zielordner erforderlich):
 
@@ -81,7 +80,24 @@ Einen synthetischen MSG-Bestand mit Klartext, HTML, Anlage, Antwortbezug, fehlen
 .\.venv\Scripts\python.exe -m unittest tests.test_msg_files -v
 ```
 
-Die vier MSG-Dateien liegen unter `input/`, die festgelegten Sollwerte daneben in `expected.json`. Der Generator benötigt kein Outlook, verwendet nur erfundene Inhalte mit `example.test`-Adressen und überschreibt keinen vorhandenen Zielordner. Er ist ein Entwicklungswerkzeug und gehört nicht zur EXE. Details und Grenzen: [synthetische MSG-/PST-Prüfung](docs/02_reports/2026-09-10_synthetic_import_verification.md).
+Die sechs MSG-Dateien liegen unter `input/`, die festgelegten Sollwerte daneben in `expected.json`. Der Generator benötigt kein Outlook, verwendet nur erfundene Inhalte mit `example.test`-Adressen und überschreibt keinen vorhandenen Zielordner. Reines komprimiertes RTF und eine echte eingebettete MSG-Unterstruktur sind enthalten. Die eingebettete Nachricht wird inventarisiert, ihr innerer Inhalt aber noch nicht exportiert. Der Generator ist ein Entwicklungswerkzeug und gehört nicht zur EXE. Details und Grenzen: [synthetische MSG-/PST-Prüfung](docs/02_reports/2026-09-10_synthetic_import_verification.md) und [RTF-/Embedded-Ergänzung](docs/02_reports/2026-09-11_libpff_pst_verification.md#ergänzende-msg-prüfung).
+
+Den optionalen echten libpff-Dateitest unter Windows vorbereiten und ausführen:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements-pst-test.txt
+.\.venv\Scripts\python.exe -m scripts.fetch_pst_test_fixture --output out\pst-test\outlook.pst
+$env:MAILANALYST_PST_TEST_FILE=(Resolve-Path out\pst-test\outlook.pst).Path
+.\.venv\Scripts\python.exe -m unittest tests.test_pst_file -v
+```
+
+Die Abhängigkeit ist exakt mit Wheel-Hash fixiert und bleibt optional; sie gehört
+nicht zur normalen Installation oder zum Windows-Build. Downloader und Test
+akzeptieren nur die festgelegte SHA-256-Prüfsumme. Die PST bleibt wegen der
+Repository-Regeln unter `out/` und außerhalb von Git. Der Test prüft libpff,
+Ordner, Betreff, Datum, Qualitätswarnungen, Analysepaket, Cachewiederholung und
+Bytegleichheit der Quelle. Herkunft, Ergebnis und Grenzen stehen im
+[libpff-PST-Nachweis](docs/02_reports/2026-09-11_libpff_pst_verification.md).
 
 Ein größerer gemischter Bestand mit zehn MSG- und zwölf EML-Varianten pro Wiederholung:
 

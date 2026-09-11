@@ -1,6 +1,6 @@
 # MailAnalyst – Architektur und Entwicklung
 
-Stand: 6. September 2026
+Stand: 11. September 2026
 
 Einstieg und Kontextauswahl: [AGENTS.md](../../AGENTS.md). Aktuelle Prioritäten: [STATUS.md](../STATUS.md). Feldbedeutungen und Formatunterschiede: [DATA_MODEL.md](DATA_MODEL.md).
 
@@ -11,7 +11,7 @@ MailAnalyst ist eine lokale Python-Anwendung mit CLI und Tkinter-GUI. Das Paket 
 | Bereich | Verantwortung |
 | --- | --- |
 | `cli.py`, `__main__.py` | Argumente, CLI-Lauf und Laufprotokoll |
-| `config.py`, `models.py` | Gemeinsame Konstanten und Dateisignatur |
+| `config.py`, `models.py`, `message_schema.py` | Gemeinsame Konstanten, Dateisignatur und versionierter Nachrichtenvertrag |
 | `version.py` | App-Version und gebündelte Buildmetadaten, unabhängig von Parser-/Cacheschema |
 | `source_guard.py` | Vergleich der Importdatei mit dem SHA-256-Vorprüfungsstand |
 | `discovery.py`, `hashing.py` | Quellen finden und Dateimerkmale erfassen |
@@ -25,7 +25,7 @@ MailAnalyst ist eine lokale Python-Anwendung mit CLI und Tkinter-GUI. Das Paket 
 | `services.py` | Vorprüfung mit Bericht sowie Verarbeitung eines festen GUI-Auftrags |
 | `parsing/` | EML, MSG, Outlook-PST, libpff-PST, MIME-Hilfen und Importerauswahl |
 | `text/` | Text- und HTML-Aufbereitung, Links, Adressen und Datumsfelder |
-| `exports/` | Formatauswahl, strukturierte Formate, Tabellen, Markdown und Ausgabeprofile |
+| `exports/` | Formatauswahl, strukturierte Formate, Tabellen, Markdown-Härtung und Ausgabeprofile |
 | `checks/` | Dateivorprüfung und Prüfung der Laufzeitumgebung |
 | `checks/targets.py` | Auftragsbezogene Komponenten, tatsächliche Schreibziele und Platzwarnungen |
 | `gui/app.py` | Fenster, gemeinsame Eingabewerte und Navigation |
@@ -83,8 +83,8 @@ zeichnet Git-Revision, lokalen Änderungsstatus, Quellbaum-Hash und installierte
 Paketversionen auf und sichert den Quellstand lokal als ZIP. Die EXE liest diese
 Metadaten aus einer gebündelten JSON-Datei; Entwicklungsaufrufe kennzeichnen sich
 als `development`. `scripts.package_manifest` schreibt die Dateiprüfsummen des
-portablen Pakets. Die CI verwendet Python 3.11.9 und `requirements-windows-lock.txt`,
-prüft Dokumentations-Dateiziele und führt den Build aus. Abschnittsanker und eine
+portablen Pakets. Die lokale Windows-Abnahme verwendet Python 3.11.9 und
+`requirements-windows-lock.txt`, prüft Dokumentations-Dateiziele und führt den Build aus. Abschnittsanker und eine
 einheitliche Codeformatierung sind nicht durch die Linkprüfung abgedeckt.
 
 `BackgroundJobs` führt Arbeit in Threads aus. Fortschritt hält pro Meldungsform nur den neuesten Stand unter einer Sperre; Ergebnisse und Fehler liegen in einer Abschlussqueue. Ein von Tkinter geplanter Poll ruft die GUI-Callbacks im Hauptthread auf. Worker lesen keine Tkinter-Variablen und rufen keine Tkinter-Methoden auf.
@@ -98,6 +98,15 @@ Beim Fensterschließen fordert die Jobsteuerung den Abbruch an, unterdrückt wei
 Die GUI übergibt optional einen Phasen-Callback an den Service. `PhaseReporter` begrenzt dessen Frequenz; der bestehende Quellen-Callback bleibt kompatibel. Export und Validierung melden getrennte Phasen. Die Aktivitätsanzeige verwendet während des Laufs keinen Gesamtprozentsatz. Nachrichtenzähler und Uhr werden ausschließlich im Tk-Thread aktualisiert; beim Abschluss, Abbruch und Schließen werden die Anzeige-Timer beendet. Der Quellenbericht der gewählten Auswahl wird im Worker geschrieben.
 
 `exports/review.sqlite3` wird vor Veröffentlichung in begrenzten Batches erzeugt und in die Exporthashes aufgenommen. Der GUI-Leser öffnet ihn kurzzeitig schreibgeschützt und liest höchstens 500 Metadatenzeilen. Er hält keine Mailtexte und keine dauerhafte Verbindung zum Arbeitscache. Die CLI erzeugt diesen GUI-Index derzeit nicht.
+
+`message_schema.assess_message()` erzwingt vor Cache-/Laufspeicherung die
+versionierten Pflichtbezüge, skalaren Feldtypen, Parserstatus und UTC-Annahme.
+Nicht zwingend fehlerhafte Qualitätslücken erhalten stabile Warncodes. Der
+`RecordStore` zählt sie und der Lauf schreibt sie mit Nachrichtenposition und
+Quellbezug nach `quality_warnings.jsonl`; sie verändern die Masterfelder nicht.
+Markdown-Ausgaben maskieren strukturwirksame Metadaten und stellen Mailtext als
+eigenen Zitatbereich dar. Mailinhalt kann dadurch keine gleichrangige generierte
+Überschrift oder HTML-Struktur mehr erzeugen.
 
 ## Namenskonvention und Ordnerreihenfolge
 
@@ -144,9 +153,14 @@ Die Dokumentationsprüfung gehört zum Abschluss jedes Änderungsblocks. Prüfe 
 
 Die Tests verwenden selbst erzeugte EML-Nachrichten mit HTML, Antwortbezug, Datumswechsel und Anlage. `tests/fixtures/exports.json` wurde vor der Modularisierung mit dem damaligen Code erzeugt und enthält ausschließlich synthetische Daten. Maschinenabhängige Quellpfade wurden normalisiert. CSV, JSON, XML, Markdown und Monatsindizes werden mit diesem Bestand verglichen; Parquet und Excel werden zurückgelesen und auf Dateninhalt geprüft.
 
-Weitere Prüfungen decken Cachetreffer und geänderte Quellen, beide CLI-Aufrufe, den realen Tkinter-Ereignisablauf und die Importstruktur ab. GUI-Tests können ohne grafische Anzeige übersprungen werden; der Windows-CI-Job ist für die Desktop-Zielplattform vorgesehen. CI wird beim nächsten Push beziehungsweise Pull Request ausgeführt.
+Weitere Prüfungen decken Cachetreffer und geänderte Quellen, beide CLI-Aufrufe, den realen Tkinter-Ereignisablauf und die Importstruktur ab. GUI-Tests können ohne grafische Anzeige übersprungen werden; die lokale Windows-Abnahme benötigt deshalb eine grafische Sitzung. Auf Nutzerwunsch gibt es keine GitHub-CI; Pushes und Pull Requests starten keine Repository-Workflows.
 
-`tests/msg_samples.py` erzeugt echte Unicode-MSG-Container aus festgelegten synthetischen Werten mit dem CFB-Schreiber von `extract-msg`, ohne MailAnalyst-Parserfunktionen zu verwenden. `tests/test_msg_files.py` prüft den realen MSG-Parser, Herkunft, Datumsgrenzen, beschädigte Dateien, Analysepaket, Cachetreffer und die Invalidierung früherer Parserrevisionen. `scripts/generate_msg_samples.py` stellt denselben Bestand für manuelle Prüfungen bereit. Dies ist kein Outlook-Kompatibilitätsnachweis und keine PST-Dateiprüfung.
+Beim GUI-Testabbau werden die letzte App-Referenz und damit verbundene
+Tk-Variablen explizit im GUI-Thread freigegeben und dort per Garbage Collection
+finalisiert. Andernfalls kann eine spätere Sammlung in einem Parserworker Tcl
+prozessweit abbrechen, obwohl die einzelnen Assertions bereits bestanden haben.
+
+`tests/msg_samples.py` erzeugt echte Unicode-MSG-Container aus festgelegten synthetischen Werten mit dem CFB-Schreiber von `extract-msg`, ohne MailAnalyst-Parserfunktionen zu verwenden. Der Bestand enthält auch eine Nachricht ausschließlich mit komprimiertem RTF-Text. `tests/test_msg_files.py` prüft den realen MSG-Parser, Herkunft, Datumsgrenzen, beschädigte Dateien, Analysepaket, Cachetreffer und die Invalidierung früherer Parserrevisionen. `scripts/generate_msg_samples.py` stellt denselben Bestand für manuelle Prüfungen bereit. Dies ist kein Outlook-Kompatibilitätsnachweis und keine PST-Dateiprüfung.
 
 Der MSG-Testschreiber unterstützt außerdem ANSI-Strings und mehrere Anlagen.
 `tests/corpus_samples.py` definiert zehn MSG-/zwölf EML-Varianten und separate
@@ -154,6 +168,14 @@ negative Dateiproben; `scripts/generate_mail_corpus.py` erzeugt Wiederholungen
 mit eindeutigen Message-IDs. `tests/test_mail_corpus.py` prüft reale Parser,
 Vorprüfung, sieben Exportformate in unterschiedlicher Prüftiefe sowie einen
 550-Nachrichten-Lauf einschließlich Cache und Ergebnisindex-Seiten.
+
+`tests/test_pst_file.py` ist ein optionaler Windows-Integrationstest gegen eine
+gehashte öffentliche PST-Referenzdatei. `scripts/fetch_pst_test_fixture.py` lädt
+sie ausschließlich an einen expliziten neuen Pfad und verwirft Dateien mit
+abweichender Prüfsumme. Die separate `requirements-pst-test.txt` fixiert das
+Drittanbieter-Wheel samt Hash; es gehört weder zur Standardlaufzeit noch zum
+Build. Dieser Test belegt den tatsächlichen libpff-Dateipfad, ersetzt aber weder
+ein selbst erzeugtes synthetisches Archiv noch einen Outlook-Test.
 
 Die vorhandenen Befehle `python mail_analyst.py` und `python mail_analyst_gui.py` bleiben erhalten. Zusätzlich ist `python -m mailanalyst` verfügbar. Der PyInstaller-Build verwendet weiterhin den GUI-Einstieg und nimmt das Paket über seine Imports auf. Schriftressourcen werden im Entwicklungsbetrieb relativ zur Projektwurzel, im Build relativ zu `sys._MEIPASS` gefunden.
 

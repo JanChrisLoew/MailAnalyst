@@ -1,6 +1,6 @@
 # MailAnalyst – Datenmodell und Exportsemantik
 
-Stand: 6. September 2026. Dieses Dokument beschreibt die aktuelle Implementierung, keine bereits durchgesetzte Schemavalidierung. Quelle sind die Module unter [parsing](../../mailanalyst/parsing), [text](../../mailanalyst/text) und [exports](../../mailanalyst/exports).
+Stand: 11. September 2026. Dieses Dokument beschreibt die aktuelle Implementierung einschließlich Nachrichtenvertrag Version 2. Quelle sind die Module unter [parsing](../../mailanalyst/parsing), [text](../../mailanalyst/text), [message_schema.py](../../mailanalyst/message_schema.py) und [exports](../../mailanalyst/exports).
 
 ## Datensätze und fehlende Werte
 
@@ -23,7 +23,7 @@ Die Typen unten beschreiben erwartete Python-Werte. Viele fehlende Textwerte sin
 | `modified_at` | Text. Änderungszeit der Quelldatei als ISO-Zeitstempel in UTC. |
 | `modified_at_ns` | Ganzzahl. Änderungszeit aus dem Dateisystem in Nanosekunden seit Unix-Epoch; Genauigkeit hängt vom Dateisystem ab. |
 | `file_sha256` | Text. SHA-256 der ganzen Quelldatei; bei PST auf Nachrichten desselben Archivs identisch. Kein Nachrichten- oder Anlagenhash. |
-| `cache_schema_version` | Ganzzahl, derzeit `6`. Interne Cachekompatibilität; keine allgemeine Export- oder Anwendungsversion. |
+| `cache_schema_version` | Ganzzahl, derzeit `7`. Interne Cachekompatibilität; keine allgemeine Export- oder Anwendungsversion. |
 
 `message_id`, Pfad und Hash erfüllen verschiedene Zwecke. Keines dieser Felder allein garantiert eine eindeutige, dauerhaft unveränderliche Nachrichtenidentität.
 
@@ -38,7 +38,7 @@ Die Typen unten beschreiben erwartete Python-Werte. Viele fehlende Textwerte sin
 | `to`, `cc`, `bcc`, `reply_to` | Empfänger-/Antwortadressen als Darstellungszeichenfolge. Bei EML typischerweise `Name <adresse>`; Einträge durch `; ` getrennt. Andere Formate können rohe Anzeigenamen liefern. |
 | `to_emails`, `cc_emails`, `bcc_emails`, `reply_to_emails` | Extrahierte Adressen als Zeichenfolge, nicht als Liste. Bei PST nicht durchgehend reine SMTP-Adressen. |
 
-MSG und beide PST-Importer lassen `reply_to` und `reply_to_emails` derzeit leer. libpff übernimmt `display_to`, `display_cc` und `display_bcc` auch in die jeweiligen `_emails`-Felder. Es gibt keine zuverlässige Erkennung von Versand-/Empfangsrichtung relativ zu einem Postfach.
+MSG und beide PST-Importer lassen `reply_to` und `reply_to_emails` derzeit leer. libpff erhält `display_to`, `display_cc` und `display_bcc` in den Darstellungsfeldern; die jeweiligen `_emails`-Felder enthalten nur daraus tatsächlich erkennbare Adressen. Reine Anzeigenamen werden nicht als scheinbare SMTP-Adressen kopiert, sondern als Qualitätswarnung ausgewiesen. Es gibt keine zuverlässige Erkennung von Versand-/Empfangsrichtung relativ zu einem Postfach.
 
 ## Datum und Zeitzonen
 
@@ -80,6 +80,7 @@ Wichtig für Monatsdateien: Markdown partitioniert nach dem **UTC-Monat** aus `s
 | `has_attachments` | Boolean aus dem erkannten Anlageninventar. |
 | `attachment_count` | Ganzzahl, Anzahl erkannter Anlagen. |
 | `attachment_names` | Mit `; ` verbundene Namen; kein strukturiertes Anlagenmodell. Fehlende Namen können je nach Importer ausgelassen werden. |
+| `embedded_attachment_count` | Bei MSG Anzahl erkannter eingebetteter Nachrichten, sonst derzeit nicht gesetzt. Der innere Nachrichteninhalt wird nicht exportiert. |
 | `mime_defects` | Bei EML erkannte Parserdefektnamen als Zeichenfolge; bei anderen Formaten derzeit leer. |
 
 EML inventarisiert Teile mit Disposition `attachment`; Inline-Inhalte müssen daher nicht als Anlagen zählen. Anlagen werden weder exportiert noch gehasht. Unterschiedliche Zählweisen der Importbibliotheken sind zu berücksichtigen. `has_attachments = false` beweist nicht, dass die Originalnachricht keine eingebetteten Inhalte besitzt.
@@ -98,9 +99,27 @@ Größe, Nanosekunden-Änderungszeit und Hash werden für ausgewählte Dateien d
 vor dem Lesen gegen den Vorprüfungsstand geprüft. Fehler während dieser Bindung
 brechen den Lauf ab. Vorprüfungsergebnisse sind Fingerabdrücke, keine Quellkopien.
 
+## Nachrichtenvertrag und Qualitätswarnungen
+
+Nachrichtenvertrag Version 2 wird vor der Aufnahme in den Lauf- und Cachespeicher
+ausgeführt. Jeder Datensatz benötigt nichtleere `source_path`- und
+`source_file_path`-Bezüge, skalare Werte und `parse_status` gleich `ok` oder
+`error`. Bekannte Text-, Ganzzahl- und Booleanfelder werden typgeprüft.
+`sent_at_utc` muss, wenn vorhanden, ein ISO-Zeitstempel mit UTC-Offset sein.
+Fehlerzeilen benötigen einen nichtleeren `parse_error`. Vertragsverletzungen
+brechen den Lauf ab und können daher nicht als erfolgreicher Export erscheinen.
+
+Fachlich mögliche Lücken bleiben Nachrichten und erzeugen stabile Warncodes:
+`missing_sent_datetime`, `unresolved_email`, `non_smtp_address`, `missing_body`,
+`attachment_flag_mismatch` und `embedded_message_not_extracted`. Das Manifest enthält Zahl der betroffenen
+Nachrichten und Warnungen sowie `versions.message_schema`. Bei mindestens einer
+Warnung verweist `quality_warnings_file` auf `quality_warnings.jsonl`; jede Zeile
+enthält Nachrichtenposition, Quellbezug, Code, Feld und Erläuterung. Die Warnungen
+werden nicht in die Masterexporte hineingeschrieben.
+
 ## Cache und Nachweisgrenzen
 
-Der primäre interne Cache ist SQLite mit getrennten Tabellen für Quellenkriterien/Audits und einzelne JSON-Nachrichten (Speicherformatversion 2). Speicherformat 1 wird beim ersten CLI-/GUI-Lauf neu aufgebaut. JSON-Einträge werden auf Struktur, skalare Nachrichtendaten und Übereinstimmung mit Quellkriterien geprüft. `cache_schema_version` in den Exportzeilen bleibt 6; die getrennte Parserrevision ist seit der MSG-Datumskorrektur vom 10. September 2026 auf 2 erhöht. Ältere Parserrevisionen werden neu importiert, damit zuvor verlorene MSG-Versanddaten wiederhergestellt werden. Die Validierung ist keine vollständige fachliche Schemavalidierung aller Nachrichtenfelder (DATA-07).
+Der primäre interne Cache ist SQLite mit getrennten Tabellen für Quellenkriterien/Audits und einzelne JSON-Nachrichten (Speicherformatversion 2). Speicherformat 1 wird beim ersten CLI-/GUI-Lauf neu aufgebaut. JSON-Einträge werden auf Struktur, skalare Nachrichtendaten und Übereinstimmung mit Quellkriterien geprüft. `cache_schema_version` in den Exportzeilen ist 7; ältere Einträge wurden wegen Nachrichtenvertrag und korrigierter libpff-Adresssemantik neu importiert. Die getrennte Parserrevision ist für die sichtbare Inventarisierung eingebetteter MSG-Nachrichten auf 3 erhöht. App-, Nachrichten-, Parser-, Cache- und Speicherformatversionen erfüllen getrennte Zwecke.
 
 GUI: `<Zielordner>/.mailanalyst_cache/mail_metadata.sqlite3`; CLI: relativ zum Arbeitsordner oder explizit über `--cache`. Bei `.pkl`-/`.pickle`-Pfaden wird eine gleichnamige `.sqlite3`-Datei verwendet. Alte Pickles werden weder geladen noch verändert. Beschädigte beziehungsweise inkompatible Caches werden mit Warnung neu aufgebaut. Eine neue Cachedatei ersetzt die alte erst nach erfolgreichem Abschluss der Quellverarbeitung. Fehlerhafte Quellen werden nicht als Cachetreffer wiederverwendet; leere erfolgreich gelesene Archive können gespeichert werden. Der Cache enthält weiterhin die Quellen des letzten Laufs, keine dauerhafte Archivdatenbank.
 
@@ -141,8 +160,8 @@ Explizite CLI-Ausgabepfade bleiben zusätzliche Kompatibilitätskopien nach Pake
 | JSON | Inkrementelles Array von Records, Unicode und skalare Python-Typen erhalten, fehlende Felder `null`. |
 | CSV | Alle übergebenen Spalten, UTF-8 mit BOM; Typinformationen gehen verloren. Formelverdächtige Zeichenfolgen erhalten ein führendes Apostroph ausschließlich in dieser Sichtausgabe. |
 | Excel | Streaming im Write-only-Modus; mehr als 1.048.575 Nachrichten werden mit Hinweis auf JSON/Parquet abgelehnt. Alle übergebenen Spalten; Zeichenfolgen werden auf 32.767 Zeichen gekürzt und ausdrücklich als Textzellen gespeichert, ohne Formeln oder automatische Hyperlinks. CR kann beim XLSX-Rücklesen als LF erscheinen. Sichtformat, kein verlustfreies Masterformat. |
-| XML | Wurzel `emails` mit `count`, darunter `email` und Elemente je Spalte; Werte als Text, fehlende Werte leer. Die aktuelle Filterung entfernt auch Zeichen außerhalb der BMP. |
-| Markdown | Lesbare Auswahl von Metadaten und bereinigtem Text, keine vollständige oder verlustfreie Repräsentation. |
+| XML | Wurzel `emails` mit `count`, darunter `email` und Elemente je Spalte; Werte als Text, fehlende Werte leer. XML-1.0-unzulässige Steuerzeichen entfallen; gültige Unicode-Zeichen einschließlich Zeichen außerhalb der BMP bleiben erhalten. |
+| Markdown | Lesbare Auswahl von maskierten Metadaten und bereinigtem Text, keine vollständige oder verlustfreie Repräsentation. Der Mailtext steht in einem Zitatbereich; HTML und gleichrangige Markdown-Struktur aus Mailfeldern werden neutralisiert. |
 
 Der CSV-Schutz gilt auch für CSV-Monatsindizes, Vorprüfungs- und Systemberichte. Zeichenfolgen mit `=`, `+`, `-`, `@` oder deren Vollbreitenvarianten nach führenden Leer-/Steuerzeichen beziehungsweise BOM werden mit `'` präfixiert; ebenso Texte mit führendem Tab, CR oder LF. Numerische Werte (einschließlich negativer Zahlen) bleiben unverändert. JSON-/JSONL-/Parquet-Ausgaben und Cache-/Masterdaten erhalten keine Schutzpräfixe. Der CSV-Index ist daher eine Sichtdarstellung; für unveränderte Metadaten dient `index.jsonl`.
 
@@ -164,4 +183,4 @@ Der GUI-Service liefert nur eine Vorschau von höchstens 500 Nachrichten und etw
 
 ## Änderungen an diesem Modell
 
-Änderungen an Feldnamen, Bedeutung, Datumsannahmen oder Exportverlusten benötigen passende Regressionstests und eine Aktualisierung dieses Dokuments sowie der betroffenen Bedienhinweise. Neue verbindliche Schemas, Nachrichten-IDs und Migrationsregeln sind noch zu entwickeln; dieses Dokument führt sie nicht stillschweigend ein.
+Änderungen an Feldnamen, Bedeutung, Datumsannahmen oder Exportverlusten benötigen passende Regressionstests und eine Aktualisierung dieses Dokuments sowie der betroffenen Bedienhinweise. Änderungen des ausführbaren Vertrags benötigen eine neue `MESSAGE_SCHEMA_VERSION`; davon unabhängige Cache-, Parser- und App-Versionen werden nicht stillschweigend gleichgesetzt. Globale Nachrichten-IDs und allgemeine Exportmigrationen bestehen weiterhin nicht.
