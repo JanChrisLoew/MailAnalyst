@@ -46,12 +46,28 @@ class MsgFileTests(unittest.TestCase):
                 self.assertEqual(row["sent_at_utc"], case["date"])
                 self.assertEqual(row["sent_datetime_de"], case["local"])
                 self.assertIn(case.get("body", case.get("body_contains")), row["body_text_clean"])
-                self.assertEqual(row["attachment_count"], int("attachment" in case))
-                self.assertEqual(row["attachment_names"], case.get("attachment", ""))
+                expected_name = case.get("attachment", case.get("embedded_attachment", ""))
+                self.assertEqual(row["attachment_count"], int(bool(expected_name)))
+                self.assertEqual(row["attachment_names"], expected_name)
+                self.assertEqual(row["embedded_attachment_count"],
+                                 int("embedded_attachment" in case))
                 self.assertEqual(row["in_reply_to"], case.get("reply", ""))
                 self.assertEqual(row["references"], case.get("reply", ""))
                 self.assertEqual(row["source_file_path"], str(path.resolve()))
                 self.assertEqual(len(row["file_sha256"]), 64)
+
+    def test_embedded_msg_is_a_real_message_attachment(self):
+        import extract_msg
+
+        message = extract_msg.openMsg(str(self.source / "embedded.msg"))
+        try:
+            attachment, = message.attachments
+            self.assertEqual(attachment.longFilename, "ursprung.msg")
+            self.assertEqual(attachment.data.subject, "Innerer Prüfbetreff")
+            self.assertEqual(attachment.data.sender, "Innere Quelle <inner@example.test>")
+            self.assertIn("eingebetteten synthetischen", attachment.data.body)
+        finally:
+            message.close()
 
     def test_real_msg_analysis_package_and_cache(self):
         options = ProcessingOptions(self.source, self.root / "output", tuple(self.source.glob("*.msg")),
@@ -61,6 +77,7 @@ class MsgFileTests(unittest.TestCase):
             run = Path(frame.attrs["run_directory"])
             manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "completed")
+            self.assertEqual(manifest["quality_warnings"], 2)
             rows = json.loads((run / "exports/emails.json").read_text(encoding="utf-8"))
             parquet = pd.read_parquet(run / "exports/emails.parquet").to_dict("records")
             self.assertEqual(len(rows), len(CASES))
@@ -72,6 +89,10 @@ class MsgFileTests(unittest.TestCase):
             self.assertEqual(len(audits), len(CASES))
             self.assertEqual({a["mode"] for a in audits}, {expected_mode})
             self.assertEqual({a["hash_status"] for a in audits}, {"verified_this_run"})
+            warnings = [json.loads(line) for line in
+                        (run / "quality_warnings.jsonl").read_text(encoding="utf-8").splitlines()]
+            self.assertEqual({warning["code"] for warning in warnings},
+                             {"missing_sent_datetime", "embedded_message_not_extracted"})
 
     def test_truncated_msg_yields_visible_error_and_can_be_replaced(self):
         path = self.source / "plain.msg"

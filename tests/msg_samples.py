@@ -7,6 +7,7 @@ Property layout follows MS-OXMSG; files are generated outside version control.
 from datetime import datetime, timezone
 import struct
 
+import compressed_rtf
 from extract_msg.ole_writer import OleWriter
 
 
@@ -19,6 +20,14 @@ CASES = (
     {"name": "reply", "subject": "Re: Prüfung – Grüße", "body": "Antwort mit Bezug.",
      "reply": "<plain@example.test>", "date": "2026-03-29T01:30:00+00:00",
      "local": "29.03.2026 03:30:00"},
+    {"name": "rtf", "subject": "Nur RTF",
+     "rtf": (r"{\rtf1\ansi\ansicpg1252\fromtext\deff0{\fonttbl{\f0\fnil Arial;}}"
+             r"\viewkind4\uc1\pard\f0\fs20 RTF-Inhalt mit Umlaut: Gr\'fc\'dfe.\par}"),
+     "body_contains": "RTF-Inhalt mit Umlaut: Grüße.",
+     "date": "2026-06-15T10:00:00+00:00", "local": "15.06.2026 12:00:00"},
+    {"name": "embedded", "subject": "Weitergeleitete Nachricht", "body": "Siehe Anlage.",
+     "embedded_attachment": "ursprung.msg", "embedded_subject": "Innerer Prüfbetreff",
+     "date": "2026-07-20T08:15:00+00:00", "local": "20.07.2026 10:15:00"},
     {"name": "undated", "subject": "Ohne Versanddatum", "body": "Kein Datum vorhanden.",
      "date": "", "local": ""},
 )
@@ -56,7 +65,7 @@ def write_msg(path, case):
     if "body" in case:
         strings[0x1000] = case["body"]
     attachments = case.get("attachments", [case["attachment"]] if "attachment" in case else [])
-    attachment_count = len(attachments)
+    attachment_count = len(attachments) + int("embedded_attachment" in case)
     numbers = [(0x340D, 3, 0 if ansi else 0x40000), (0x0E07, 3, 1),
                (0x3FFD, 3, 1252 if ansi else 65001), (0x3FDE, 3, 65001)]
     if case["date"]:
@@ -64,6 +73,8 @@ def write_msg(path, case):
         epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
         numbers.append((0x0039, 0x40, int((date - epoch).total_seconds()) * 10_000_000))
     binaries = [(0x1013, case["html"].encode("utf-8"))] if "html" in case else []
+    if "rtf" in case:
+        binaries.append((0x1009, compressed_rtf.compress(case["rtf"].encode("ascii"))))
     header = struct.pack("<8sIIII8s", b"", 2, attachment_count, 2, attachment_count, b"")
     properties("", strings, numbers, binaries, header)
     for index, (name, address) in enumerate((("Ben Test", "ben@example.test"),
@@ -76,6 +87,27 @@ def write_msg(path, case):
                    {0x3704: name, 0x3707: name, 0x370E: "application/octet-stream"},
                    [(0x3705, 3, 1), (0x0E21, 3, index), (0x0E20, 3, 20)],
                    [(0x3701, b"Synthetic attachment")])
+    if "embedded_attachment" in case:
+        index = len(attachments)
+        name = case["embedded_attachment"]
+        prefix = f"__attach_version1.0_#{index:08X}/"
+        properties(prefix, {0x3704: name, 0x3707: name, 0x370E: "application/vnd.ms-outlook"},
+                   [(0x3705, 3, 5), (0x0E21, 3, index), (0x0E20, 3, 20)])
+        embedded = prefix + "__substg1.0_3701000D/"
+        embedded_id = "<embedded-inner@example.test>"
+        embedded_headers = (f"From: Innere Quelle <inner@example.test>\r\n"
+                            f"Message-ID: {embedded_id}\r\n")
+        embedded_strings = {
+            0x001A: "IPM.Note", 0x0037: case["embedded_subject"],
+            0x007D: embedded_headers, 0x0C1A: "Innere Quelle",
+            0x0C1E: "SMTP", 0x0C1F: "inner@example.test",
+            0x1000: "Inhalt der eingebetteten synthetischen Nachricht.",
+            0x1035: embedded_id,
+        }
+        embedded_numbers = [(0x340D, 3, 0x40000), (0x0E07, 3, 1),
+                            (0x3FFD, 3, 65001), (0x3FDE, 3, 65001)]
+        embedded_header = struct.pack("<8sIIII", b"", 0, 0, 0, 0)
+        properties(embedded, embedded_strings, embedded_numbers, header=embedded_header)
     writer.write(path)
 
 

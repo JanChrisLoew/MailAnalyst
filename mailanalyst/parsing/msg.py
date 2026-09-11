@@ -33,8 +33,14 @@ def parse_msg(path: Path, timezone_name: str) -> dict[str, object]:
         raw_html = getattr(message, "htmlBody", "") or ""
         body_html = raw_html.decode("utf-8", errors="replace") if isinstance(raw_html, bytes) else str(raw_html)
         body_text_clean = clean_plain_text(body_text_raw) or html_to_text(body_html)
-        attachments = [str(getattr(item, "longFilename", None) or getattr(item, "shortFilename", None) or "")
-                       for item in (getattr(message, "attachments", []) or [])]
+        attachment_items = list(getattr(message, "attachments", []) or [])
+        attachments = [str(getattr(item, "longFilename", None) or
+                           getattr(item, "shortFilename", None) or "")
+                       for item in attachment_items]
+        embedded_count = sum(
+            getattr(getattr(item, "type", None), "name", "") in {"MSG", "SIGNED_EMBEDDED"}
+            for item in attachment_items
+        )
         header = getattr(message, "headerDict", {}) or {}
         return {
             "message_id": str(header.get("Message-ID", header.get("Message-Id", "")) or ""),
@@ -65,6 +71,7 @@ def parse_msg(path: Path, timezone_name: str) -> dict[str, object]:
             "has_attachments": bool(attachments),
             "attachment_count": len(attachments),
             "attachment_names": "; ".join(name for name in attachments if name),
+            "embedded_attachment_count": embedded_count,
             "mime_defects": "",
             "parse_status": "ok",
             "parse_error": "",

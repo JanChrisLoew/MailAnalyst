@@ -10,7 +10,7 @@ from pathlib import Path
 from mailanalyst.config import CACHE_SCHEMA_VERSION, LOGGER
 
 STORAGE_VERSION = 1
-PARSER_VERSION = 2
+PARSER_VERSION = 3
 
 
 def sqlite_path(path: Path) -> Path:

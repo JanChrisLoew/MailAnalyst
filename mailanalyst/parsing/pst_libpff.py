@@ -10,6 +10,7 @@ from mailanalyst.text.dates import derive_date_fields
 from mailanalyst.text.html import html_to_text
 from mailanalyst.text.dates import parse_datetime
 from mailanalyst.hashing import sha256_file
+from mailanalyst.text.addresses import format_address_emails
 
 
 def iter_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) -> Iterator[dict[str, object]]:
@@ -72,9 +73,12 @@ def iter_pst_libpff(path: Path, signature: FileSignature, timezone_name: str) ->
                     "sent_at": sent_at, "sent_at_utc": sent_at_utc, **derive_date_fields(sent_at_utc, timezone_name),
                     "from_name": text_value(attr(message, "sender_name")),
                     "from_email": text_value(attr(message, "sender_email_address")),
-                    "to": text_value(attr(message, "display_to")), "to_emails": text_value(attr(message, "display_to")),
-                    "cc": text_value(attr(message, "display_cc")), "cc_emails": text_value(attr(message, "display_cc")),
-                    "bcc": text_value(attr(message, "display_bcc")), "bcc_emails": text_value(attr(message, "display_bcc")),
+                    "to": text_value(attr(message, "display_to")),
+                    "to_emails": format_address_emails([text_value(attr(message, "display_to"))]),
+                    "cc": text_value(attr(message, "display_cc")),
+                    "cc_emails": format_address_emails([text_value(attr(message, "display_cc"))]),
+                    "bcc": text_value(attr(message, "display_bcc")),
+                    "bcc_emails": format_address_emails([text_value(attr(message, "display_bcc"))]),
                     "reply_to": "", "reply_to_emails": "", "body_text": body_clean,
                     "body_text_raw": body_raw, "body_text_clean": body_clean,
                     "body_text_length": len(body_clean), "body_text_raw_length": len(body_raw),

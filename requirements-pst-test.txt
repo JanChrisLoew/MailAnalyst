@@ -1,0 +1,2 @@
+# Optional Windows-only integration-test dependency; not part of runtime/build.
+libpff-python-windows==20231205 --hash=sha256:532aa36d9ad3d983a4349235cba2acff393759adfbfaed54f9c400be339d3e0b

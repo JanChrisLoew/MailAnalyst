@@ -8,7 +8,7 @@ import zipfile
 from tests.msg_samples import CASES, write_msg
 
 
-MSG_CASES = (*CASES,
+MSG_CASES = (*(case for case in CASES if case["name"] not in {"rtf", "embedded"}),
     {"name": "ansi", "ansi": True, "subject": "Ältere Nachricht – 1252", "body": "Grüße, Öl und 10 €.",
      "date": "2024-02-29T12:00:00+00:00"},
     {"name": "emoji", "subject": "Unicode 😀 日本語", "body": "Grüße 😀 日本語 العربية",
